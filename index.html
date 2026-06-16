@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory Management System</title>
+  <style>
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8fafc;
+  color: #111827;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+input, select, button, textarea { font-family: inherit; font-size: 16px; }
+
+.loader-wrap {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 100vh; gap: 16px;
+}
+.spinner {
+  width: 44px; height: 44px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #1A2B4A;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loader-text { font-size: 14px; color: #6b7280; }
+.error-box {
+  max-width: 480px; margin: 80px auto; padding: 24px;
+  background: #fef2f2; border: 1px solid #fca5a5; border-radius: 10px;
+  text-align: center;
+}
+.error-box h3 { color: #b91c1c; margin-bottom: 8px; }
+.error-box p  { color: #6b7280; font-size: 13px; }
+
+.app-header {
+  background: #1A2B4A; padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.app-header-title { font-weight: 700; font-size: 15px; color: #fff; letter-spacing: -.3px; }
+.app-header-sub   { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+.saving-badge {
+  font-size: 11px; color: #86efac; font-weight: 600;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.saving-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #86efac;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+.tabs-bar {
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+  padding: 0 8px; display: flex; gap: 0; overflow-x: auto;
+  position: sticky; top: 52px; z-index: 99;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs-bar::-webkit-scrollbar { display: none; }
+.tab-btn {
+  padding: 10px 11px; font-size: 12px; cursor: pointer;
+  border: none; border-bottom: 3px solid transparent;
+  background: none; font-weight: 400; white-space: nowrap; color: #6b7280;
+  transition: color .15s;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px;
+}
+.tab-btn.active { border-bottom-color: #1A2B4A; font-weight: 700; color: #1A2B4A; }
+.tab-btn:hover:not(.active) { color: #374151; }
+
+.page { max-width: 1200px; margin: 0 auto; padding: 12px 10px 56px; }
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px; margin-bottom: 12px;
+}
+.kpi-card {
+  background: #f9fafb; border: 1px solid #e5e7eb;
+  border-radius: 10px; padding: 10px 12px;
+}
+.kpi-label { font-size: 10px; color: #6b7280; margin-bottom: 3px; font-weight: 500; line-height: 1.3; }
+.kpi-value { font-size: 18px; font-weight: 700; color: #111827; }
+.kpi-sub   { font-size: 9px; color: #9ca3af; margin-top: 3px; line-height: 1.5; word-break: break-word; }
+
+.card {
+  background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+}
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid #e5e7eb; gap: 8px;
+}
+.card-title { font-weight: 600; font-size: 13px; color: #111827; }
+
+.section-heading {
+  font-size: 12px; font-weight: 700; color: #1A2B4A;
+  padding: 8px 0 5px; margin-top: 6px; border-bottom: 2px solid #e5e7eb;
+  margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+}
+
+.btn-add {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 7px 12px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border-radius: 8px; border: none;
+  background: #1A2B4A; color: #fff; transition: opacity .15s;
+  white-space: nowrap; min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-add:hover { opacity: .85; }
+.btn-add:disabled { opacity: .5; cursor: not-allowed; }
+
+.form-panel {
+  background: #f0f9ff; border: 1px solid #bae6fd;
+  border-radius: 10px; padding: 12px 12px; margin-bottom: 10px;
+}
+.form-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.form-panel-title { font-weight: 600; font-size: 13px; color: #0c4a6e; }
+.btn-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 22px; color: #6b7280; line-height: 1; padding: 4px;
+  min-width: 36px; min-height: 36px; display: flex; align-items: center; justify-content: center;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.form-grid .full-row { grid-column: 1 / -1; }
+.field-label {
+  font-size: 11px; color: #6b7280; display: block;
+  margin-bottom: 3px; font-weight: 500;
+}
+.form-input, .form-select {
+  width: 100%; box-sizing: border-box;
+  font-size: 14px; padding: 8px 10px;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  outline: none; background: #fff; font-family: inherit;
+  min-height: 40px;
+  -webkit-appearance: none;
+}
+.form-input:focus, .form-select:focus { border-color: #1A2B4A; outline: 2px solid rgba(26,43,74,.15); }
+.form-textarea {
+  width: 100%; box-sizing: border-box;
+  font-size: 14px; padding: 8px 10px;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  outline: none; background: #fff; font-family: inherit;
+  resize: vertical; min-height: 60px;
+}
+.form-textarea:focus { border-color: #1A2B4A; }
+.form-preview {
+  margin-top: 8px; padding: 7px 10px;
+  background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 8px; font-size: 11px; color: #374151;
+}
+.form-actions { margin-top: 12px; display: flex; gap: 8px; }
+.btn-save {
+  padding: 9px 20px; font-size: 14px; font-weight: 600;
+  cursor: pointer; border-radius: 8px; border: none;
+  background: #1A2B4A; color: #fff; min-height: 42px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-save:hover { opacity: .85; }
+.btn-cancel {
+  padding: 9px 14px; font-size: 14px; cursor: pointer;
+  border-radius: 8px; border: 1px solid #d1d5db;
+  background: #fff; color: #374151; min-height: 42px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-cancel:hover { background: #f9fafb; }
+
+.filter-bar {
+  display: flex; gap: 6px; align-items: center;
+  padding: 6px 10px; border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb; flex-wrap: wrap;
+}
+.filter-input {
+  flex: 1; min-width: 130px;
+  padding: 7px 10px; font-size: 13px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+  outline: none; font-family: inherit; background: #fff;
+  min-height: 36px;
+}
+.filter-input:focus { border-color: #1A2B4A; }
+.filter-select {
+  padding: 6px 8px; font-size: 12px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+  outline: none; background: #fff; font-family: inherit;
+  cursor: pointer; min-height: 36px;
+}
+.filter-select:focus { border-color: #1A2B4A; }
+.filter-count { font-size: 10px; color: #9ca3af; white-space: nowrap; }
+.filter-clear {
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; font-size: 12px; padding: 3px 6px;
+  border-radius: 4px; white-space: nowrap; min-height: 36px;
+}
+.filter-clear:hover { color: #374151; background: #f0f0f0; }
+
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table  { width: 100%; border-collapse: collapse; min-width: 480px; }
+thead th {
+  font-size: 10px; font-weight: 600; color: #6b7280;
+  padding: 7px 8px; border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap; background: #f9fafb;
+  text-align: left;
+}
+thead th.th-r  { text-align: right; }
+tbody td {
+  font-size: 12px; padding: 8px 8px;
+  border-bottom: 1px solid #f3f4f6; color: #1f2937;
+  text-align: left;
+}
+.td-r   { text-align: right; }
+.td-mono{ font-family: monospace; font-size: 11px; }
+.td-muted { color: #9ca3af; }
+.td-bold  { font-weight: 600; }
+tr:nth-child(even) td { background: #fafafa; }
+tfoot td {
+  font-size: 11px; font-weight: 700; color: #374151;
+  padding: 7px 8px; border-top: 2px solid #e5e7eb;
+  background: #f9fafb;
+}
+tfoot td.td-r { text-align: right; }
+
+.badge {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+}
+.badge-in      { background: #dcfce7; color: #16a34a; }
+.badge-low     { background: #fef3c7; color: #b45309; }
+.badge-out     { background: #fee2e2; color: #dc2626; }
+.badge-paid    { background: #dcfce7; color: #166534; }
+.badge-pending { background: #fef3c7; color: #92400e; }
+.badge-partial { background: #dbeafe; color: #1e40af; }
+.badge-opex    { background: #fce7f3; color: #9d174d; }
+.badge-invest  { background: #e0e7ff; color: #3730a3; }
+
+.dot {
+  display: inline-block; width: 7px; height: 7px;
+  border-radius: 50%; margin-right: 4px; vertical-align: middle;
+}
+
+.btn-del {
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; font-size: 16px; padding: 4px 6px;
+  min-height: 36px; min-width: 32px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-del:hover { color: #dc2626; }
+
+.two-col { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.right-stack { display: flex; flex-direction: column; gap: 10px; }
+
+.pl-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; gap: 8px;
+}
+.pl-divider { border-top: 1px solid #e5e7eb; margin: 8px 0; }
+.pl-body { padding: 4px 14px 14px; }
+.pl-result {
+  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  font-weight: 600; font-size: 12px;
+}
+.pl-result.profit { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.pl-result.loss   { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+
+.bar-track { height: 6px; background: #f3f4f6; border-radius: 99px; overflow: hidden; }
+.bar-fill  { height: 100%; background: #1D7874; border-radius: 99px; transition: width .4s ease; }
+
+.chart-legend {
+  display: flex; gap: 12px; justify-content: center;
+  font-size: 11px; color: #6b7280; margin-top: 6px; flex-wrap: wrap;
+}
+.legend-dot {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 2px; margin-right: 3px; vertical-align: middle;
+}
+
+.perf-chart-wrap { padding: 10px 12px 8px; }
+.perf-chart-wrap svg { display: block; overflow: visible; }
+
+.variant-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr 32px; gap: 6px;
+  margin-bottom: 8px;
+}
+.btn-add-variant {
+  font-size: 12px; cursor: pointer; border: 1px solid #d1d5db;
+  background: #f9fafb; color: #374151; padding: 6px 12px;
+  border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 4px; min-height: 36px;
+}
+.btn-add-variant:hover { background: #f0f0f0; }
+.btn-rm-variant { display: flex; align-items: flex-end; padding-bottom: 1px; }
+.btn-rm-variant button {
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; font-size: 20px; line-height: 1;
+  padding: 4px; min-height: 36px;
+}
+.btn-rm-variant button:hover { color: #dc2626; }
+
+.editable-cell {
+  display: inline-block; width: 100%;
+  padding: 3px 5px; border-radius: 5px;
+  border: 1px solid transparent; cursor: pointer;
+  transition: border-color .12s, background .12s; line-height: 1.4;
+  min-height: 28px;
+}
+.editable-cell:hover  { border-color: #bae6fd; background: #f0f9ff; }
+.editable-cell:active { border-color: #7dd3fc; background: #e0f2fe; }
+
+.inline-input {
+  display: block; width: 100%; min-width: 56px;
+  padding: 4px 8px; font-size: 14px; font-family: inherit;
+  border: 1px solid #1A2B4A; border-radius: 5px; outline: none;
+  background: #fff; color: #111827;
+  box-shadow: 0 0 0 2px rgba(26,43,74,.15);
+  min-height: 34px;
+}
+.inline-select {
+  display: block; width: 100%; padding: 4px 6px;
+  font-size: 14px; font-family: inherit;
+  border: 1px solid #1A2B4A; border-radius: 5px; outline: none;
+  background: #fff; color: #111827;
+  box-shadow: 0 0 0 2px rgba(26,43,74,.15); cursor: pointer;
+  min-height: 34px;
+}
+
+.info-note {
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 8px; padding: 9px 12px; font-size: 11px;
+  color: #1e40af; margin-bottom: 10px; line-height: 1.5;
+}
+
+.partial-panel {
+  background: #fffbeb; border: 1px solid #fde68a;
+  border-radius: 8px; padding: 10px 12px; margin-top: 4px;
+}
+.partial-panel-row {
+  display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-top: 8px;
+}
+.partial-panel-field { flex: 1; min-width: 120px; }
+
+.pl-two-col { display: flex; flex-direction: column; gap: 10px; }
+.pl-two-col > * { width: 100%; min-width: 0; }
+
+.cm-tabs {
+  display: flex; gap: 4px; padding: 10px 12px 0;
+  border-bottom: 1px solid #e5e7eb; background: #f9fafb;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.cm-tabs::-webkit-scrollbar { display: none; }
+.cm-tab-btn {
+  padding: 8px 14px; font-size: 12px; font-weight: 500;
+  border: 1px solid #e5e7eb; border-bottom: none;
+  border-radius: 6px 6px 0 0; background: #fff;
+  cursor: pointer; white-space: nowrap; color: #6b7280;
+  transition: all .15s; min-height: 36px;
+}
+.cm-tab-btn.active { background: #1A2B4A; color: #fff; border-color: #1A2B4A; font-weight: 700; }
+.cm-tab-btn:hover:not(.active) { background: #f0f0f0; color: #374151; }
+
+.cm-section { padding: 12px; }
+
+.cm-recipe-selector {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 10px 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;
+}
+.cm-recipe-selector label { font-size: 11px; color: #6b7280; font-weight: 600; }
+.cm-recipe-selector select {
+  padding: 7px 10px; font-size: 13px; border: 1px solid #d1d5db;
+  border-radius: 8px; background: #fff; font-family: inherit; min-height: 38px;
+  outline: none; cursor: pointer;
+}
+.cm-recipe-selector select:focus { border-color: #1A2B4A; }
+
+.cm-product-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid #e5e7eb;
+  background: #eff6ff; flex-wrap: wrap; gap: 8px;
+}
+.cm-product-header-title { font-size: 13px; font-weight: 700; color: #1e40af; }
+.cm-product-header-cost  { font-size: 12px; color: #2563eb; font-weight: 600; }
+
+thead th[colspan] { text-align: center; font-size: 10px; padding: 5px 8px; border-bottom: 1px solid #e5e7eb; }
+thead th[rowspan] { vertical-align: middle; }
+
+@media (min-width: 640px) {
+  .app-header { padding: 12px 20px; }
+  .app-header-title { font-size: 16px; }
+  .tabs-bar { padding: 0 16px; }
+  .tab-btn { padding: 11px 13px; font-size: 13px; }
+  .page { padding: 16px 14px 56px; }
+  .kpi-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .kpi-value { font-size: 20px; }
+  .two-col { grid-template-columns: 1.4fr 1fr; }
+  .pl-two-col { flex-direction: row; }
+  .form-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  tbody td { font-size: 13px; padding: 8px 10px; }
+  thead th { font-size: 11px; padding: 8px 10px; }
+}
+
+@media (min-width: 900px) {
+  .app-header { padding: 14px 24px; }
+  .app-header-title { font-size: 17px; }
+  .tabs-bar { padding: 0 24px; }
+  .page { padding: 20px 16px 60px; }
+  .kpi-grid { gap: 12px; margin-bottom: 16px; }
+  .kpi-value { font-size: 22px; }
+}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ── CONFIGURATION — paste your GAS deployment URL here ────────
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxJYsQyLQsu120rbfhlJyKVQFzCaInT01NVNeIimQsL4kRG5HHjR322oJ1mUSrmldeG/exec';
+// Example: 'https://script.google.com/macros/s/AKfycb.../exec'
+
+// ── API helpers (replaces google.script.run) ─────────────────
+const gasGet = () =>
+  fetch(GAS_URL)
+    .then(r => { if (!r.ok) throw new Error('Network error ' + r.status); return r.json(); });
+
+const gasPost = (action, data) =>
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action, data })
+  }).then(r => { if (!r.ok) throw new Error('Network error ' + r.status); return r.json(); });
+
+// ── Palette ───────────────────────────────────────────────────
+const PC = { A:'#1D7874', B:'#2563EB', C:'#7C3AED', D:'#EA580C' };
+const PCOLORS = ['#1D7874','#2563EB','#7C3AED','#EA580C','#db2777','#0891b2'];
+
+// ── Pure helpers ──────────────────────────────────────────────
+const fmt    = n => '₹' + (+n).toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const fmtKg  = n => (+n).toFixed(2) + ' kg';
+const pKg    = sz => parseFloat(sz) / 1000;
+const today  = () => new Date().toISOString().slice(0, 10);
+const uid    = pfx => pfx + '-' + Date.now().toString(36).toUpperCase();
+
+const net = s => {
+  const ps = (s.paymentStatus && s.paymentStatus.trim()) ? s.paymentStatus.trim() : 'Pending';
+  if (ps === 'Paid') return +(s.qty * s.price * (1 - (s.disc||0) / 100)).toFixed(1);
+  if (ps === 'Partial' && s.partialAmount > 0) return +(s.partialAmount).toFixed(1);
+  return 0;
+};
+
+const invoiced = s => +(s.qty * s.price * (1 - (s.disc||0) / 100)).toFixed(1);
+
+const prodDisplay = p => {
+  if (!p) return '—';
+  if (p.masterBrand && p.variantName) return p.masterBrand + ' ' + p.variantName;
+  return p.name;
+};
+
+function calcBatch(b, sales) {
+  const bs = sales.filter(s => s.batchId === b.id);
+  const kgDispatched = bs.reduce((a, s) => a + s.qty * pKg(s.size), 0);
+  const rev = bs.reduce((a, s) => {
+    const ps = (s.paymentStatus && s.paymentStatus.trim()) ? s.paymentStatus.trim() : 'Pending';
+    if (ps === 'Paid')    return a + invoiced(s);
+    if (ps === 'Partial') return a + (s.partialAmount || 0);
+    return a;
+  }, 0);
+  const totalBatchCost = b.kgProduced * b.costPerKg;
+  const costUsed = b.kgProduced > 0 ? totalBatchCost * (kgDispatched / b.kgProduced) : 0;
+  const bal = b.kgProduced - kgDispatched - (b.kgReturned || 0) - (b.kgDamaged || 0);
+  const balSafe = +bal.toFixed(3);
+  let status;
+  if (balSafe <= 0) {
+    status = 'Out of stock';
+  } else {
+    const pct = b.kgProduced > 0 ? balSafe / b.kgProduced : 0;
+    status = pct < 0.2 ? 'Low stock' : 'In stock';
+  }
+  return {
+    kgSold:        +kgDispatched.toFixed(3),
+    revenue:       +rev.toFixed(1),
+    totalInvoiced: +bs.reduce((a,s) => a + invoiced(s), 0).toFixed(1),
+    investment:    +totalBatchCost.toFixed(1),
+    costUsed:      +costUsed.toFixed(1),
+    kgBalance:     balSafe,
+    profit:        +(rev - costUsed).toFixed(1),
+    status
+  };
+}
+
+// ── UI atoms ──────────────────────────────────────────────────
+const Badge = ({s}) => {
+  const cls = s === 'In stock' ? 'in' : s === 'Low stock' ? 'low' : 'out';
+  return <span className={`badge badge-${cls}`}>{s}</span>;
+};
+const PayBadge = ({s}) => {
+  const v = (s && s.trim()) ? s.trim() : 'Pending';
+  const cls = v === 'Paid' ? 'paid' : v === 'Partial' ? 'partial' : 'pending';
+  return <span className={`badge badge-${cls}`}>{v}</span>;
+};
+const ExpTypeBadge = ({s}) => {
+  const cls = s === 'Asset / One-time Investment' ? 'invest' : 'opex';
+  return <span className={`badge badge-${cls}`}>{s}</span>;
+};
+const KPI = ({label, value, sub, accent}) => (
+  <div className="kpi-card">
+    <div className="kpi-label">{label}</div>
+    <div className="kpi-value" style={accent ? {color:accent} : {}}>{value}</div>
+    {sub && <div className="kpi-sub">{sub}</div>}
+  </div>
+);
+const Card     = ({children, style}) => <div className="card" style={style}>{children}</div>;
+const CardHead = ({title, action}) => (
+  <div className="card-head">
+    <span className="card-title">{title}</span>
+    {action}
+  </div>
+);
+const AddBtn = ({onClick, label, disabled}) => (
+  <button className="btn-add" onClick={onClick} disabled={disabled}>+ {label}</button>
+);
+const Fld = ({label, children}) => (
+  <div><label className="field-label">{label}</label>{children}</div>
+);
+function PlainTH({c, r}) {
+  return <th className={r ? 'th-r' : ''}>{c}</th>;
+}
+
+function FilterBar({value, onChange, placeholder, children, count, total}) {
+  return (
+    <div className="filter-bar">
+      <input className="filter-input" type="text" value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder || '🔍  Search…'} />
+      {children}
+      {count !== undefined && total !== undefined &&
+        <span className="filter-count">{count} of {total}</span>}
+      {value && <button className="filter-clear" onClick={() => onChange('')}>✕</button>}
+    </div>
+  );
+}
+
+function PerfChart({ perf }) {
+  if (!perf || perf.length === 0)
+    return <div style={{padding:20,color:'#9ca3af',fontSize:13,textAlign:'center'}}>No data</div>;
+  const maxVal = Math.max(...perf.flatMap(p => [p.investment, p.revenue]), 1);
+  const BAR_H = 14; const GAP = 5; const GRP = BAR_H * 2 + GAP + 22;
+  const LBL_W = 88; const CHT_W = 240; const SVG_H = perf.length * GRP + 8;
+  const fmtBar = v => v >= 1000 ? '₹' + (v/1000).toFixed(1) + 'k' : '₹' + (+v).toFixed(0);
+  return (
+    <div className="perf-chart-wrap">
+      <svg width="100%" viewBox={`0 0 ${LBL_W + CHT_W + 70} ${SVG_H}`}>
+        {perf.map((p, i) => {
+          const y    = i * GRP + 6;
+          const invW = maxVal > 0 ? (p.investment / maxVal) * CHT_W : 2;
+          const revW = maxVal > 0 ? (p.revenue    / maxVal) * CHT_W : 2;
+          const color = PCOLORS[i % PCOLORS.length];
+          return (
+            <g key={p.id}>
+              <text x={LBL_W - 6} y={y + BAR_H - 2} textAnchor="end" fontSize={11} fill="#374151" fontWeight="600">{prodDisplay(p)}</text>
+              <rect x={LBL_W} y={y} width={Math.max(invW,2)} height={BAR_H} fill="#cbd5e1" rx={3} />
+              <text x={LBL_W + Math.max(invW,2) + 4} y={y + BAR_H - 2} fontSize={9} fill="#9ca3af">{fmtBar(p.investment)}</text>
+              <rect x={LBL_W} y={y+BAR_H+GAP} width={Math.max(revW,2)} height={BAR_H} fill={color} rx={3} />
+              <text x={LBL_W + Math.max(revW,2) + 4} y={y+BAR_H+GAP+BAR_H-2} fontSize={9} fill={color}>{fmtBar(p.revenue)}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="chart-legend">
+        <span><span className="legend-dot" style={{background:'#cbd5e1'}}/>Production Cost</span>
+        <span><span className="legend-dot" style={{background:'#1D7874'}}/>Revenue Collected</span>
+      </div>
+    </div>
+  );
+}
+
+function FormPanel({title, onClose, onSubmit, preview, children}) {
+  return (
+    <div className="form-panel">
+      <div className="form-panel-head">
+        <span className="form-panel-title">{title}</span>
+        <button className="btn-close" onClick={onClose}>×</button>
+      </div>
+      <div className="form-grid">{children}</div>
+      {preview && <div className="form-preview"><strong>Preview: </strong>{preview}</div>}
+      <div className="form-actions">
+        <button className="btn-save" onClick={onSubmit}>Save</button>
+        <button className="btn-cancel" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function EC({ entity, rowKey, field, display, val, type='text', options,
+              editCell, editVal, setEditVal, startEdit, commitEdit, cancelEdit, saving }) {
+  const isEditing = editCell
+    && editCell.entity === entity && editCell.rowKey === rowKey && editCell.field === field;
+  if (isEditing) {
+    if (options) {
+      return (
+        <select className="inline-select" value={editVal} autoFocus
+          onChange={e => setEditVal(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}>
+          {options.map(o => {
+            const v = (o && typeof o === 'object') ? o.v : o;
+            const l = (o && typeof o === 'object') ? o.l : o;
+            return <option key={v} value={v}>{l}</option>;
+          })}
+        </select>
+      );
+    }
+    return (
+      <input className="inline-input" type={type} value={editVal} autoFocus
+        onChange={e => setEditVal(e.target.value)}
+        onBlur={commitEdit}
+        onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit(); }} />
+    );
+  }
+  return (
+    <span className="editable-cell"
+      title={saving ? 'Saving…' : 'Tap to edit'}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => { e.stopPropagation(); if (!saving) startEdit(entity, rowKey, field, val); }}>
+      {display}
+    </span>
+  );
+}
+
+function PartialEditPanel({ sale, onSave, onClose, saving }) {
+  const [pqty, setPqty] = useState(String(sale.partialQty || ''));
+  const [pamt, setPamt] = useState(String(sale.partialAmount || ''));
+  const fullInv = invoiced(sale);
+  return (
+    <div className="partial-panel">
+      <div style={{fontSize:11,fontWeight:700,color:'#92400e'}}>
+        Update Partial — {sale.id}
+        <span style={{fontWeight:400,color:'#b45309',marginLeft:6}}>
+          Full invoice: {fmt(fullInv)} for {sale.qty} pcs
+        </span>
+      </div>
+      <div className="partial-panel-row">
+        <div className="partial-panel-field">
+          <label className="field-label">Packages Sold So Far</label>
+          <input type="number" className="inline-input" value={pqty} min="0" max={sale.qty}
+            onChange={e => setPqty(e.target.value)} placeholder={`Max ${sale.qty}`} />
+        </div>
+        <div className="partial-panel-field">
+          <label className="field-label">Amount Received (₹)</label>
+          <input type="number" className="inline-input" value={pamt} min="0"
+            onChange={e => setPamt(e.target.value)} placeholder="e.g. 5000" />
+        </div>
+        <div style={{display:'flex',gap:6,alignItems:'flex-end'}}>
+          <button className="btn-save" onClick={() => onSave(+pqty||0, +pamt||0)} disabled={saving}>Update</button>
+          <button className="btn-cancel" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+      {(+pamt > 0) && (
+        <div style={{marginTop:6,fontSize:10,color:'#78350f'}}>
+          {+pqty > 0 ? `${pqty} of ${sale.qty} pcs sold · ` : ''}
+          Received {fmt(+pamt)} · Outstanding {fmt(Math.max(0, fullInv - (+pamt)))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TABS = [
+  {id:'dash',       label:'Dashboard'},
+  {id:'batches',    label:'Batches'},
+  {id:'sales',      label:'Sales'},
+  {id:'stock',      label:'Stock'},
+  {id:'expenses',   label:'Expenses'},
+  {id:'pl',         label:'P&L'},
+  {id:'products',   label:'Products'},
+  {id:'customers',  label:'Customers'},
+  {id:'costmaster', label:'Cost Master'},
+];
+
+const PAYMENT_MODES = ['Cash','UPI','Bank Transfer','Cheque','Credit'];
+
+// ── Helper to update state from API response ──────────────────
+function applyData(data, setters) {
+  const { setProds, setBats, setSals, setCustMeta, setExpenses,
+          setRawMaterials, setPackaging, setRecipes } = setters;
+  setProds(data.products || []);
+  setBats(data.batches || []);
+  setSals(data.sales || []);
+  if (data.custMeta) setCustMeta(data.custMeta);
+  setExpenses(data.expenses || []);
+  setRawMaterials(data.rawMaterials || []);
+  setPackaging(data.packaging || []);
+  setRecipes(data.recipes || []);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN APP
+// ═══════════════════════════════════════════════════════════════
+function App() {
+  const [tab,      setTab]      = useState('dash');
+  const [prods,    setProds]    = useState([]);
+  const [bats,     setBats]     = useState([]);
+  const [sals,     setSals]     = useState([]);
+  const [custMeta, setCustMeta] = useState({});
+  const [expenses, setExpenses] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [loadErr,  setLoadErr]  = useState(null);
+
+  const [sbf, setSbf] = useState(false);
+  const [ssf, setSsf] = useState(false);
+  const [spf, setSpf] = useState(false);
+  const [sef, setSef] = useState(false);
+  const [partialEditSale, setPartialEditSale] = useState(null);
+
+  const [nb, setNb] = useState({});
+  const [ns, setNs] = useState({paymentStatus:'Pending'});
+  const [np, setNp] = useState({variants:[{size:'100g',unitCost:0,mrp:0}]});
+  const [ne, setNe] = useState({date:today(), type:'Material Purchase', paymentMode:'Cash'});
+
+  const [editCell, setEditCell] = useState(null);
+  const [editVal,  setEditVal]  = useState('');
+
+  const [rawMaterials,  setRawMaterials]  = useState([]);
+  const [packaging,     setPackaging]     = useState([]);
+  const [recipes,       setRecipes]       = useState([]);
+  const [cmTab,         setCmTab]         = useState('table4');
+  const [cmRecipeProd,  setCmRecipeProd]  = useState('');
+  const [showRmForm,    setShowRmForm]    = useState(false);
+  const [showPkgForm,   setShowPkgForm]   = useState(false);
+  const [showRecForm,   setShowRecForm]   = useState(false);
+  const [newRm,  setNewRm]  = useState({unit:'1kg'});
+  const [newPkg, setNewPkg] = useState({});
+  const [newRec, setNewRec] = useState({});
+
+  const [batchFilter,    setBatchFilter]    = useState('');
+  const [saleFilter,     setSaleFilter]     = useState('');
+  const [salePayFilt,    setSalePayFilt]    = useState('');
+  const [stockFilter,    setStockFilter]    = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [expenseFilter,  setExpenseFilter]  = useState('');
+  const [expenseTypeFilt,setExpenseTypeFilt]= useState('');
+
+  const setters = { setProds, setBats, setSals, setCustMeta, setExpenses,
+                    setRawMaterials, setPackaging, setRecipes };
+
+  // ── Load data ─────────────────────────────────────────────
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      setLoadErr('Could not reach Google Sheets after 10s. Check your GAS_URL configuration.');
+    }, 10000);
+
+    gasGet()
+      .then(data => {
+        clearTimeout(timeout);
+        applyData(data, setters);
+        setLoading(false);
+      })
+      .catch(err => {
+        clearTimeout(timeout);
+        setLoadErr(err.message || 'Failed to load data.');
+        setLoading(false);
+      });
+  }, []);
+
+  // ── Generic API op ────────────────────────────────────────
+  const gasOp = useCallback((fnName, payload, onSuccess) => {
+    setSaving(true);
+    const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    gasPost(fnName, data !== undefined ? data : null)
+      .then(result => {
+        applyData(result, setters);
+        setSaving(false);
+        if (onSuccess) onSuccess();
+      })
+      .catch(err => {
+        setSaving(false);
+        alert('Error: ' + (err.message || 'Operation failed.'));
+      });
+  }, []);
+
+  // ── Derived data ──────────────────────────────────────────
+  const bStats = useMemo(() => {
+    const m = {};
+    bats.forEach(b => { m[b.id] = calcBatch(b, sals); });
+    return m;
+  }, [bats, sals]);
+
+  const prodMap = useMemo(() => {
+    const m = {};
+    prods.forEach(p => { m[p.id] = p; });
+    return m;
+  }, [prods]);
+
+  const perf = useMemo(() => prods.map(p => {
+    const pb      = bats.filter(b => b.productId === p.id);
+    const inv     = pb.reduce((a,b) => a + b.kgProduced * b.costPerKg, 0);
+    const rev     = pb.reduce((a,b) => a + (bStats[b.id]?.revenue || 0), 0);
+    const costUsed= pb.reduce((a,b) => a + (bStats[b.id]?.costUsed || 0), 0);
+    const kgP     = pb.reduce((a,b) => a + b.kgProduced, 0);
+    return {
+      name:p.name, id:p.id,
+      masterBrand:p.masterBrand, variantName:p.variantName,
+      investment: +inv.toFixed(1),
+      revenue:    +rev.toFixed(1),
+      costUsed:   +costUsed.toFixed(1),
+      profit:     +(rev - costUsed).toFixed(1),
+      kgProduced: kgP,
+    };
+  }), [prods, bats, bStats]);
+
+  const tot = useMemo(() => ({
+    inv:      +perf.reduce((a,p) => a + p.investment, 0).toFixed(1),
+    rev:      +perf.reduce((a,p) => a + p.revenue, 0).toFixed(1),
+    costUsed: +perf.reduce((a,p) => a + p.costUsed, 0).toFixed(1),
+    prof:     +perf.reduce((a,p) => a + p.profit, 0).toFixed(1),
+    kgP:      bats.reduce((a,b) => a + b.kgProduced, 0),
+    kgS:      bats.reduce((a,b) => a + (bStats[b.id]?.kgSold || 0), 0),
+    pcs:      sals.reduce((a,s) => a + s.qty, 0),
+    invoiced: +sals.reduce((a,s) => a + invoiced(s), 0).toFixed(1),
+  }), [perf, bats, bStats, sals]);
+
+  const expTots = useMemo(() => {
+    const opex   = expenses.filter(e => e.type === 'Material Purchase' || e.type === 'Day-to-Day Expense').reduce((a,e) => a + e.amount, 0);
+    const invest = expenses.filter(e => e.type === 'Asset / One-time Investment').reduce((a,e) => a + e.amount, 0);
+    return { opex:+opex.toFixed(1), invest:+invest.toFixed(1), total:+(opex+invest).toFixed(1) };
+  }, [expenses]);
+
+  const batsLatestFirst = useMemo(() =>
+    [...bats].sort((a,b) => (b.prodDate||'') > (a.prodDate||'') ? 1 : -1),
+  [bats]);
+
+  const salsLatestFirst = useMemo(() =>
+    [...sals].sort((a,b) => String(b.id).localeCompare(String(a.id), undefined, {numeric:true})),
+  [sals]);
+
+  const expensesLatestFirst = useMemo(() =>
+    [...expenses].sort((a,b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0)),
+  [expenses]);
+
+  const filteredBats = useMemo(() => {
+    if (!batchFilter.trim()) return batsLatestFirst;
+    const f = batchFilter.trim().toLowerCase();
+    return batsLatestFirst.filter(b =>
+      b.id.toLowerCase().includes(f) ||
+      (prodMap[b.productId]?.name||'').toLowerCase().includes(f) ||
+      (bStats[b.id]?.status||'').toLowerCase().includes(f)
+    );
+  }, [batsLatestFirst, batchFilter, bStats, prodMap]);
+
+  const filteredSals = useMemo(() => {
+    let list = salsLatestFirst;
+    if (saleFilter.trim()) {
+      const f = saleFilter.trim().toLowerCase();
+      list = list.filter(s =>
+        (s.id||'').toLowerCase().includes(f) ||
+        (s.customer||'').toLowerCase().includes(f) ||
+        (s.type||'').toLowerCase().includes(f) ||
+        (prodMap[s.productId]?.name||'').toLowerCase().includes(f) ||
+        (s.batchId||'').toLowerCase().includes(f) ||
+        (s.size||'').toLowerCase().includes(f)
+      );
+    }
+    if (salePayFilt) {
+      list = list.filter(s => {
+        const ps = (s.paymentStatus && s.paymentStatus.trim()) ? s.paymentStatus.trim() : 'Pending';
+        return ps === salePayFilt;
+      });
+    }
+    return list;
+  }, [salsLatestFirst, saleFilter, salePayFilt, prodMap]);
+
+  const filteredStock = useMemo(() => {
+    if (!stockFilter.trim()) return batsLatestFirst;
+    const f = stockFilter.trim().toLowerCase();
+    return batsLatestFirst.filter(b =>
+      (b.id||'').toLowerCase().includes(f) ||
+      (prodMap[b.productId]?.name||'').toLowerCase().includes(f) ||
+      (bStats[b.id]?.status||'').toLowerCase().includes(f)
+    );
+  }, [batsLatestFirst, stockFilter, bStats, prodMap]);
+
+  const filteredExpenses = useMemo(() => {
+    let list = expensesLatestFirst;
+    if (expenseFilter.trim()) {
+      const f = expenseFilter.trim().toLowerCase();
+      list = list.filter(e =>
+        (e.vendor||'').toLowerCase().includes(f) ||
+        (e.itemName||'').toLowerCase().includes(f) ||
+        (e.notes||'').toLowerCase().includes(f)
+      );
+    }
+    if (expenseTypeFilt) {
+      list = list.filter(e => {
+        if (expenseTypeFilt === 'Material Purchase') {
+          return e.type === 'Material Purchase' || e.type === 'Day-to-Day Expense';
+        }
+        return e.type === expenseTypeFilt;
+      });
+    }
+    return list;
+  }, [expensesLatestFirst, expenseFilter, expenseTypeFilt]);
+
+  const saleTots = useMemo(() => ({
+    pcs: filteredSals.reduce((a,s) => a + s.qty, 0),
+    rev: filteredSals.reduce((a,s) => a + invoiced(s), 0),
+    collected: filteredSals.reduce((a,s) => a + net(s), 0),
+  }), [filteredSals]);
+
+  const customers = useMemo(() => {
+    const map = {};
+    sals.forEach(s => {
+      const name = s.customer || '(Unknown)';
+      if (!map[name]) {
+        map[name] = { name, type:s.type||'', mobile:custMeta[name]?.mobile||'',
+          purchases:[], totalInvoiced:0, totalCollected:0, totalPending:0 };
+      }
+      if (s.type) map[name].type = s.type;
+      map[name].mobile = custMeta[name]?.mobile || map[name].mobile || '';
+      const inv = invoiced(s); const col = net(s);
+      const ps = (s.paymentStatus && s.paymentStatus.trim()) ? s.paymentStatus.trim() : 'Pending';
+      map[name].purchases.push({
+        invoiceId:s.id, date:s.date, product:prodDisplay(prodMap[s.productId])||s.productId,
+        size:s.size, qty:s.qty, invoicedAmount:inv, collectedAmount:col,
+        outstandingAmount: +(inv - col).toFixed(1),
+        paymentStatus:ps, partialQty:s.partialQty||0, partialAmount:s.partialAmount||0
+      });
+      map[name].totalInvoiced  += inv;
+      map[name].totalCollected += col;
+      map[name].totalPending   += (inv - col);
+    });
+    return Object.values(map).sort((a,b) => b.totalInvoiced - a.totalInvoiced);
+  }, [sals, prodMap, custMeta]);
+
+  const customerNames = useMemo(() =>
+    [...new Set(sals.map(s => s.customer).filter(Boolean))].sort(),
+  [sals]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerFilter.trim()) return customers;
+    const f = customerFilter.trim().toLowerCase();
+    return customers.filter(c =>
+      c.name.toLowerCase().includes(f) ||
+      (c.type||'').toLowerCase().includes(f) ||
+      (c.mobile||'').includes(f) ||
+      c.purchases.some(p => p.product.toLowerCase().includes(f))
+    );
+  }, [customers, customerFilter]);
+
+  // ── CRUD helpers ──────────────────────────────────────────
+  function doAddBatch() {
+    if (!nb.id || !nb.productId || !nb.kgProduced) return alert('Required: Batch ID, Product, KG Produced');
+    gasOp('addBatch', JSON.stringify({
+      ...nb, kgProduced:+nb.kgProduced, costPerKg:+(nb.costPerKg||0),
+      kgReturned:+(nb.kgReturned||0), kgDamaged:+(nb.kgDamaged||0), notes:nb.notes||''
+    }), () => { setSbf(false); setNb({}); });
+  }
+
+  function doAddSale() {
+    if (!ns.id || !ns.productId || !ns.batchId || !ns.size || !ns.qty) return alert('Required: Invoice, Product, Batch, Size, Qty');
+    const p = prods.find(x => x.id === ns.productId);
+    const v = p?.variants.find(x => x.size === ns.size);
+    gasOp('addSale', JSON.stringify({
+      ...ns, qty:+ns.qty, price:+(ns.price || v?.mrp || 0), disc:+(ns.disc||0),
+      paymentStatus:ns.paymentStatus||'Pending',
+      partialQty:+(ns.partialQty||0), partialAmount:+(ns.partialAmount||0), notes:ns.notes||''
+    }), () => { setSsf(false); setNs({paymentStatus:'Pending'}); });
+  }
+
+  function doAddProduct() {
+    if (!np.id || !np.name) return alert('Required: Product ID and Name');
+    gasOp('addProduct', JSON.stringify({...np, id:np.id.toUpperCase()}), () => {
+      setSpf(false); setNp({variants:[{size:'100g',unitCost:0,mrp:0}]});
+    });
+  }
+
+  function doAddExpense() {
+    if (!ne.itemName || !ne.amount) return alert('Required: Item Description and Amount');
+    gasOp('addExpense', JSON.stringify({...ne, id:uid('EXP'), amount:+(ne.amount||0)}), () => {
+      setSef(false); setNe({date:today(), type:'Material Purchase', paymentMode:'Cash'});
+    });
+  }
+
+  function savePartialSale(sale, pqty, pamt) {
+    gasOp('updateSale', JSON.stringify({
+      ...sale, paymentStatus:'Partial', partialQty:pqty, partialAmount:pamt
+    }), () => setPartialEditSale(null));
+  }
+
+  function delBatch(id)   { if (!confirm('Delete batch '+id+'?')) return; gasOp('deleteBatch', id); }
+  function delSale(id)    { if (!confirm('Delete sale '+id+'?')) return;  gasOp('deleteSale', id); }
+  function delProduct(id) { if (!confirm('Delete product '+id+'?')) return; gasOp('deleteProduct', id); }
+  function delExpense(id) { if (!confirm('Delete expense?')) return; gasOp('deleteExpense', id); }
+
+  function saveCustMobile(customerName, mobile) {
+    const updated = {...custMeta, [customerName]:{...(custMeta[customerName]||{}), mobile}};
+    gasOp('updateCustMeta', JSON.stringify(updated));
+  }
+
+  function startEdit(entity, rowKey, field, val) {
+    setEditCell({entity, rowKey, field}); setEditVal(String(val ?? ''));
+  }
+  function cancelEdit() { setEditCell(null); setEditVal(''); }
+  function commitEdit() {
+    if (!editCell) return;
+    const {entity, rowKey, field} = editCell; const val = editVal;
+    setEditCell(null); setEditVal('');
+    const numBatch = ['kgProduced','costPerKg','kgReturned','kgDamaged'];
+    const numSale  = ['qty','price','disc'];
+    const numExp   = ['amount'];
+    const numProd  = ['unitCost','mrp','printMrp','retailSellPrice','customerPrice'];
+
+    if (entity === 'batch') {
+      const b = bats.find(x => x.id === rowKey); if (!b) return;
+      gasOp('updateBatch', JSON.stringify({...b, [field]: numBatch.includes(field) ? +val : val}));
+    } else if (entity === 'sale') {
+      const s = sals.find(x => x.id === rowKey); if (!s) return;
+      gasOp('updateSale', JSON.stringify({...s, [field]: numSale.includes(field) ? +val : val}));
+    } else if (entity === 'expense') {
+      const e = expenses.find(x => x.id === rowKey); if (!e) return;
+      gasOp('updateExpense', JSON.stringify({...e, [field]: numExp.includes(field) ? +val : val}));
+    } else if (entity === 'product') {
+      if (rowKey.includes(':')) {
+        const ci = rowKey.indexOf(':');
+        const prodId = rowKey.slice(0, ci); const varSize = rowKey.slice(ci+1);
+        const p = prods.find(x => x.id === prodId); if (!p) return;
+        const updV = p.variants.map(v => v.size === varSize ? {...v, [field]: numProd.includes(field) ? +val : val} : v);
+        gasOp('updateProduct', JSON.stringify({...p, variants:updV}));
+      } else {
+        const p = prods.find(x => x.id === rowKey); if (!p) return;
+        gasOp('updateProduct', JSON.stringify({...p, [field]:val}));
+      }
+    } else if (entity === 'custMobile') {
+      saveCustMobile(rowKey, val);
+    } else if (entity === 'rawMat') {
+      const r = rawMaterials.find(x => x.id === rowKey); if (!r) return;
+      const numFields = ['cost','qty'];
+      gasOp('updateRawMaterial', JSON.stringify({...r, [field]: numFields.includes(field) ? +val : val}));
+    } else if (entity === 'packaging') {
+      const p = packaging.find(x => x.id === rowKey); if (!p) return;
+      const numFields = ['costPerPouch','costPerSticker','qty','stickerQty','noOfSheets'];
+      const updated = {...p, [field]: numFields.includes(field) ? +val : val};
+      updated.totalCost = +(updated.costPerPouch||0) + +(updated.costPerSticker||0);
+      gasOp('updatePackaging', JSON.stringify(updated));
+    } else if (entity === 'recipe') {
+      const r = recipes.find(x => x.id === rowKey); if (!r) return;
+      const numFields = ['qtyGrams'];
+      gasOp('updateRecipeItem', JSON.stringify({...r, [field]: numFields.includes(field) ? +val : val}));
+    }
+  }
+
+  const ecProps = {editCell, editVal, setEditVal, startEdit, commitEdit, cancelEdit, saving};
+  const bfp = ns.productId ? batsLatestFirst.filter(b => b.productId === ns.productId) : batsLatestFirst;
+  const vfp = ns.productId ? (prodMap[ns.productId]?.variants || []) : [];
+
+  function doAddRawMaterial() {
+    if (!newRm.item || !newRm.cost) return alert('Required: Item name and Cost');
+    gasOp('addRawMaterial', JSON.stringify({...newRm, id:'RM-'+Date.now().toString(36).toUpperCase(),
+      qty:+(newRm.qty||1), cost:+(newRm.cost||0)}), () => { setShowRmForm(false); setNewRm({unit:'1kg'}); });
+  }
+  function doAddPackaging() {
+    if (!newPkg.pouchSize) return alert('Required: Pouch size');
+    gasOp('addPackaging', JSON.stringify({
+      ...newPkg,
+      id: 'PKG-'+Date.now().toString(36).toUpperCase(),
+      costPerPouch: +(newPkg.costPerPouch||0),
+      costPerSticker: +(newPkg.costPerSticker||0),
+      qty: 0, stickerQty: 0, noOfSheets: 0,
+      totalCost: +(newPkg.costPerPouch||0) + +(newPkg.costPerSticker||0)
+    }), () => { setShowPkgForm(false); setNewPkg({}); });
+  }
+  function doAddRecipeItem() {
+    if (!newRec.productId || !newRec.itemName) return alert('Required: Product and Item');
+    gasOp('addRecipeItem', JSON.stringify({...newRec, id:'RCP-'+Date.now().toString(36).toUpperCase(),
+      qtyGrams:+(newRec.qtyGrams||0)}), () => { setShowRecForm(false); setNewRec({productId:cmRecipeProd}); });
+  }
+  function delRawMaterial(id) { if (!confirm('Delete raw material?')) return; gasOp('deleteRawMaterial', id); }
+  function delPackaging(id)   { if (!confirm('Delete packaging item?')) return; gasOp('deletePackaging', id); }
+  function delRecipeItem(id)  { if (!confirm('Delete recipe item?')) return; gasOp('deleteRecipeItem', id); }
+
+  // ── Config warning ────────────────────────────────────────
+  const gasNotConfigured = GAS_URL === 'YOUR_GAS_DEPLOYMENT_URL_HERE';
+
+  if (loading) return (
+    <div className="loader-wrap">
+      <div className="spinner"></div>
+      <div className="loader-text">Loading from Google Sheets…</div>
+    </div>
+  );
+
+  // ── Render ────────────────────────────────────────────────
+  return (
+    <div>
+      <div className="app-header">
+        <div>
+          <div className="app-header-title">📦 Inventory Management</div>
+          <div className="app-header-sub">{prods.length} products · {bats.length} batches · {sals.length} invoices</div>
+        </div>
+        {saving && <div className="saving-badge"><div className="saving-spinner"></div>Saving…</div>}
+      </div>
+
+      {/* Config / error banner */}
+      {(gasNotConfigured || loadErr) && (
+        <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,
+          padding:'10px 16px',margin:'8px 16px',fontSize:12,color:'#991b1b',
+          display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span>
+            {gasNotConfigured
+              ? '⚠️ GAS_URL not configured. Open index.html and set your Google Apps Script deployment URL at the top of the script.'
+              : '⚠️ ' + loadErr}
+          </span>
+          {loadErr && !gasNotConfigured &&
+            <button onClick={() => setLoadErr(null)}
+              style={{background:'none',border:'none',cursor:'pointer',color:'#991b1b',fontSize:16}}>✕</button>}
+        </div>
+      )}
+
+      <div className="tabs-bar">
+        {TABS.map(t => (
+          <button key={t.id} className={'tab-btn' + (tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      <div className="page">
+
+        {tab === 'dash' && (
+          <div>
+            <div className="kpi-grid">
+              <KPI label="Production Cost" value={fmt(tot.inv)}
+                sub={perf.filter(p=>p.investment>0).map(p=>prodDisplay(p)+': '+fmt(p.investment)).join(' · ')||undefined} />
+              <KPI label="Revenue Collected" value={fmt(tot.rev)} sub={`Invoiced: ${fmt(tot.invoiced)}`} />
+              <KPI label="Gross Profit / Loss" value={fmt(tot.prof)}
+                accent={tot.prof>=0?'#16a34a':'#dc2626'} sub="Collected minus cost of sold qty" />
+              <KPI label="Material Purchase Cost" accent="#9d174d" value={fmt(expTots.opex)}
+                sub={`${expenses.filter(e=>e.type==='Material Purchase'||e.type==='Day-to-Day Expense').length} entries (since start)`} />
+              <KPI label="Asset Investments" accent="#3730a3" value={fmt(expTots.invest)} sub="Machines, equipment (one-time)" />
+              <KPI label="KG Produced" value={fmtKg(tot.kgP)}
+                sub={perf.filter(p=>p.kgProduced>0).map(p=>prodDisplay(p)+': '+fmtKg(p.kgProduced)).join(' · ')||undefined} />
+              <KPI label="KG Sold" value={fmtKg(tot.kgS)} sub={tot.kgP>0?(tot.kgS/tot.kgP*100).toFixed(1)+'% sold':''} />
+              <KPI label="Pouches Sold" value={tot.pcs.toLocaleString('en-IN')} sub={sals.length+' invoices'} />
+            </div>
+            <div className="two-col">
+              <Card><CardHead title="Product performance" /><PerfChart perf={perf} /></Card>
+              <Card>
+                <CardHead title="Stock status by batch" />
+                {batsLatestFirst.map(b => {
+                  const st = bStats[b.id];
+                  return (
+                    <div key={b.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                      padding:'8px 12px',borderBottom:'1px solid #f3f4f6'}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600}}>{b.id}</div>
+                        <div style={{fontSize:10,color:'#6b7280'}}>{prodDisplay(prodMap[b.productId])} · {fmtKg(Math.max(0,st.kgBalance))} left</div>
+                      </div>
+                      <Badge s={st.status} />
+                    </div>
+                  );
+                })}
+              </Card>
+            </div>
+            <Card>
+              <CardHead title="Recent sales (latest 8)" />
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>Invoice</th><th>Date</th><th>Customer</th><th>Product</th><th>Size</th>
+                    <PlainTH c="Qty" r /><PlainTH c="Invoice Amt" r /><PlainTH c="Collected" r /><th>Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {salsLatestFirst.slice(0,8).map(s => (
+                      <tr key={s.id}>
+                        <td className="td-mono">{s.id}</td>
+                        <td className="td-muted">{s.date}</td>
+                        <td>{s.customer}</td>
+                        <td><span className="dot" style={{background:PC[s.productId]||'#94a3b8'}}/>{prodDisplay(prodMap[s.productId])}</td>
+                        <td>{s.size}</td>
+                        <td className="td-r">{s.qty}</td>
+                        <td className="td-r">{fmt(invoiced(s))}</td>
+                        <td className="td-r td-bold">{fmt(net(s))}</td>
+                        <td><PayBadge s={s.paymentStatus} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'batches' && (
+          <div>
+            {sbf && (
+              <FormPanel title="Add new batch" onClose={()=>{setSbf(false);setNb({});}} onSubmit={doAddBatch}
+                preview={nb.kgProduced && nb.costPerKg
+                  ? `Production Cost: ${fmt(+nb.kgProduced * +nb.costPerKg)}  ·  ${Math.floor(+nb.kgProduced/.1)}×100g, ${Math.floor(+nb.kgProduced/.2)}×200g, ${Math.floor(+nb.kgProduced/.5)}×500g`
+                  : null}>
+                <Fld label="Batch ID *"><input className="form-input" placeholder="e.g. BA-003" value={nb.id||''} onChange={e=>setNb({...nb,id:e.target.value})} /></Fld>
+                <Fld label="Product *">
+                  <select className="form-select" value={nb.productId||''} onChange={e=>setNb({...nb,productId:e.target.value})}>
+                    <option value="">Select…</option>
+                    {prods.map(p=><option key={p.id} value={p.id}>{prodDisplay(p)}</option>)}
+                  </select>
+                </Fld>
+                <Fld label="Production date"><input type="date" className="form-input" value={nb.prodDate||''} onChange={e=>setNb({...nb,prodDate:e.target.value})} /></Fld>
+                <Fld label="Expiry date"><input type="date" className="form-input" value={nb.expDate||''} onChange={e=>setNb({...nb,expDate:e.target.value})} /></Fld>
+                <Fld label="KG produced *"><input type="number" className="form-input" min="0" value={nb.kgProduced||''} onChange={e=>setNb({...nb,kgProduced:e.target.value})} /></Fld>
+                <Fld label="Cost/KG (₹) *"><input type="number" className="form-input" min="0" value={nb.costPerKg||''} onChange={e=>setNb({...nb,costPerKg:e.target.value})} /></Fld>
+                <Fld label="KG returned"><input type="number" className="form-input" min="0" placeholder="0" value={nb.kgReturned||''} onChange={e=>setNb({...nb,kgReturned:e.target.value})} /></Fld>
+                <Fld label="KG damaged"><input type="number" className="form-input" min="0" placeholder="0" value={nb.kgDamaged||''} onChange={e=>setNb({...nb,kgDamaged:e.target.value})} /></Fld>
+                <div className="full-row"><Fld label="Notes"><textarea className="form-textarea" placeholder="Optional notes…" value={nb.notes||''} onChange={e=>setNb({...nb,notes:e.target.value})} /></Fld></div>
+              </FormPanel>
+            )}
+            <Card>
+              <CardHead title={`Batch register (${filteredBats.length} of ${bats.length})`}
+                action={<AddBtn onClick={()=>{setSbf(!sbf);setSsf(false);}} label="Add batch" disabled={saving} />} />
+              <FilterBar value={batchFilter} onChange={setBatchFilter} placeholder="🔍  Search batch ID, product, status…" count={filteredBats.length} total={bats.length} />
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <PlainTH c="Batch ID" /><PlainTH c="Product" /><PlainTH c="Prod. Date" /><PlainTH c="Expiry" />
+                    <PlainTH c="KG Produced" r /><PlainTH c="Cost/KG" r /><PlainTH c="Total Cost" r />
+                    <PlainTH c="KG Sold" r /><PlainTH c="KG Balance" r /><PlainTH c="Cost Sold" r />
+                    <PlainTH c="Rev. Collected" r /><PlainTH c="Profit/Loss" r /><PlainTH c="Status" /><PlainTH c="Notes" /><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredBats.map(b => {
+                      const st = bStats[b.id];
+                      return (
+                        <tr key={b.id}>
+                          <td className="td-mono">{b.id}</td>
+                          <td><EC {...ecProps} entity="batch" rowKey={b.id} field="productId"
+                            display={<><span className="dot" style={{background:PC[b.productId]||'#94a3b8'}}/>{prodDisplay(prodMap[b.productId])}</>}
+                            val={b.productId} options={prods.map(p=>({v:p.id,l:prodDisplay(p)}))} /></td>
+                          <td className="td-muted"><EC {...ecProps} entity="batch" rowKey={b.id} field="prodDate" display={b.prodDate||'—'} val={b.prodDate||''} type="date" /></td>
+                          <td className="td-muted"><EC {...ecProps} entity="batch" rowKey={b.id} field="expDate" display={b.expDate||'—'} val={b.expDate||''} type="date" /></td>
+                          <td className="td-r"><EC {...ecProps} entity="batch" rowKey={b.id} field="kgProduced" display={fmtKg(b.kgProduced)} val={b.kgProduced} type="number" /></td>
+                          <td className="td-r td-muted"><EC {...ecProps} entity="batch" rowKey={b.id} field="costPerKg" display={fmt(b.costPerKg)} val={b.costPerKg} type="number" /></td>
+                          <td className="td-r">{fmt(st.investment)}</td>
+                          <td className="td-r td-muted">{fmtKg(st.kgSold)}</td>
+                          <td className="td-r td-bold" style={st.kgBalance<0?{color:'#dc2626'}:{}}>{fmtKg(Math.max(0,st.kgBalance))}</td>
+                          <td className="td-r td-muted">{fmt(st.costUsed)}</td>
+                          <td className="td-r">{fmt(st.revenue)}</td>
+                          <td className="td-r"><span style={{color:st.profit>=0?'#16a34a':'#dc2626',fontWeight:700}}>{fmt(st.profit)}</span></td>
+                          <td><Badge s={st.status} /></td>
+                          <td className="td-muted" style={{maxWidth:100,fontSize:11}}>{b.notes||''}</td>
+                          <td><button className="btn-del" onClick={()=>delBatch(b.id)}>🗑</button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={6}>Totals ({filteredBats.length})</td>
+                      <td className="td-r">{fmt(filteredBats.reduce((a,b)=>a+(bStats[b.id]?.investment||0),0))}</td>
+                      <td className="td-r">{fmtKg(filteredBats.reduce((a,b)=>a+(bStats[b.id]?.kgSold||0),0))}</td>
+                      <td className="td-r">{fmtKg(Math.max(0,filteredBats.reduce((a,b)=>a+(bStats[b.id]?.kgBalance||0),0)))}</td>
+                      <td className="td-r">{fmt(filteredBats.reduce((a,b)=>a+(bStats[b.id]?.costUsed||0),0))}</td>
+                      <td className="td-r">{fmt(filteredBats.reduce((a,b)=>a+(bStats[b.id]?.revenue||0),0))}</td>
+                      <td className="td-r" style={{color:tot.prof>=0?'#16a34a':'#dc2626'}}>{fmt(filteredBats.reduce((a,b)=>a+(bStats[b.id]?.profit||0),0))}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+            <Card>
+              <CardHead title="Pouch availability per batch" />
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>Batch ID</th><th>Product</th>
+                    <th className="th-r">KG Balance</th><th className="th-r">100g</th><th className="th-r">200g</th><th className="th-r">500g</th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredBats.map(b => {
+                      const st = bStats[b.id]; const bal = Math.max(0,st.kgBalance);
+                      return (
+                        <tr key={b.id}>
+                          <td className="td-mono">{b.id}</td>
+                          <td>{prodDisplay(prodMap[b.productId])}</td>
+                          <td className="td-r td-bold">{fmtKg(bal)}</td>
+                          <td className="td-r">{Math.floor(bal/.1).toLocaleString('en-IN')}</td>
+                          <td className="td-r">{Math.floor(bal/.2).toLocaleString('en-IN')}</td>
+                          <td className="td-r">{Math.floor(bal/.5).toLocaleString('en-IN')}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'sales' && (
+          <div>
+            {ssf && (
+              <FormPanel title="Add new sale" onClose={()=>{setSsf(false);setNs({paymentStatus:'Pending'});}} onSubmit={doAddSale}
+                preview={ns.qty && ns.price && ns.size ? `Invoice total: ${fmt(+ns.qty * +(ns.price||0) * (1-(+(ns.disc||0)/100)))}` : null}>
+                <Fld label="Invoice No *"><input className="form-input" placeholder="INV-016" value={ns.id||''} onChange={e=>setNs({...ns,id:e.target.value})} /></Fld>
+                <Fld label="Date"><input type="date" className="form-input" value={ns.date||''} onChange={e=>setNs({...ns,date:e.target.value})} /></Fld>
+                <Fld label="Existing customer">
+                  <select className="form-select" value={customerNames.includes(ns.customer||'')?(ns.customer||''):''}
+                    onChange={e=>{ if(e.target.value) setNs({...ns,customer:e.target.value}); }}>
+                    <option value="">— Select —</option>
+                    {customerNames.map(n=><option key={n} value={n}>{n}</option>)}
+                  </select>
+                </Fld>
+                <Fld label="Customer name *"><input className="form-input" placeholder="or type new" value={ns.customer||''} onChange={e=>setNs({...ns,customer:e.target.value})} /></Fld>
+                <Fld label="Type">
+                  <select className="form-select" value={ns.type||''} onChange={e=>setNs({...ns,type:e.target.value})}>
+                    <option value="">Select…</option>
+                    {['Retailer','Wholesale','Direct/Online','Distributor'].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </Fld>
+                <Fld label="Product *">
+                  <select className="form-select" value={ns.productId||''} onChange={e=>setNs({...ns,productId:e.target.value,batchId:'',size:'',price:''})}>
+                    <option value="">Select…</option>
+                    {prods.map(p=><option key={p.id} value={p.id}>{prodDisplay(p)}</option>)}
+                  </select>
+                </Fld>
+                <Fld label="Batch *">
+                  <select className="form-select" value={ns.batchId||''} onChange={e=>setNs({...ns,batchId:e.target.value})}>
+                    <option value="">Select…</option>
+                    {bfp.map(b=><option key={b.id} value={b.id}>{b.id} ({bStats[b.id]?.status})</option>)}
+                  </select>
+                </Fld>
+                <Fld label="Size *">
+                  <select className="form-select" value={ns.size||''}
+                    onChange={e=>{ const v=vfp.find(x=>x.size===e.target.value); setNs({...ns,size:e.target.value,price:v?.mrp||''}); }}>
+                    <option value="">Select…</option>
+                    {vfp.map(v=><option key={v.size} value={v.size}>{v.size} (MRP ₹{v.mrp})</option>)}
+                  </select>
+                </Fld>
+                <Fld label="Qty (total pcs) *"><input type="number" className="form-input" min="1" value={ns.qty||''} onChange={e=>setNs({...ns,qty:e.target.value})} /></Fld>
+                <Fld label="Unit price (₹)"><input type="number" className="form-input" min="0" value={ns.price||''} onChange={e=>setNs({...ns,price:e.target.value})} /></Fld>
+                <Fld label="Discount (%)"><input type="number" className="form-input" min="0" max="100" placeholder="0" value={ns.disc||''} onChange={e=>setNs({...ns,disc:e.target.value})} /></Fld>
+                <Fld label="Payment status">
+                  <select className="form-select" value={ns.paymentStatus||'Pending'} onChange={e=>setNs({...ns,paymentStatus:e.target.value})}>
+                    {['Pending','Paid','Partial'].map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </Fld>
+                {ns.paymentStatus === 'Partial' && (<>
+                  <Fld label="Packages Sold So Far"><input type="number" className="form-input" min="0" value={ns.partialQty||''} placeholder={`Max ${ns.qty||'?'}`} onChange={e=>setNs({...ns,partialQty:e.target.value})} /></Fld>
+                  <Fld label="Amount Received (₹)"><input type="number" className="form-input" min="0" value={ns.partialAmount||''} onChange={e=>setNs({...ns,partialAmount:e.target.value})} /></Fld>
+                </>)}
+                <div className="full-row"><Fld label="Notes"><textarea className="form-textarea" placeholder="Optional…" value={ns.notes||''} onChange={e=>setNs({...ns,notes:e.target.value})} /></Fld></div>
+              </FormPanel>
+            )}
+            <Card>
+              <CardHead title={`Sales register (${filteredSals.length} of ${sals.length})`}
+                action={<AddBtn onClick={()=>{setSsf(!ssf);setSbf(false);}} label="Add sale" disabled={saving} />} />
+              <FilterBar value={saleFilter} onChange={setSaleFilter} placeholder="🔍  Search invoice, customer, product…" count={filteredSals.length} total={sals.length}>
+                <select className="filter-select" value={salePayFilt} onChange={e=>setSalePayFilt(e.target.value)}>
+                  <option value="">All payments</option>
+                  {['Paid','Pending','Partial'].map(s=><option key={s}>{s}</option>)}
+                </select>
+              </FilterBar>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <PlainTH c="Invoice" /><PlainTH c="Date" /><PlainTH c="Customer" /><PlainTH c="Type" /><PlainTH c="Product" /><PlainTH c="Batch" />
+                    <PlainTH c="Size" /><PlainTH c="Total Qty" r /><PlainTH c="Unit Price" r /><PlainTH c="Disc%" r />
+                    <PlainTH c="Invoice Amt" r /><PlainTH c="Collected" r /><PlainTH c="Outstanding" r /><PlainTH c="Payment" /><PlainTH c="Notes" /><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredSals.map(s => {
+                      const inv = invoiced(s); const col = net(s); const out = +(inv-col).toFixed(1);
+                      const ps = (s.paymentStatus && s.paymentStatus.trim()) ? s.paymentStatus.trim() : 'Pending';
+                      const isPartial = ps === 'Partial';
+                      return (
+                        <React.Fragment key={s.id}>
+                          <tr>
+                            <td className="td-mono">{s.id}</td>
+                            <td className="td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="date" display={s.date||'—'} val={s.date||''} type="date" /></td>
+                            <td><EC {...ecProps} entity="sale" rowKey={s.id} field="customer" display={s.customer} val={s.customer} /></td>
+                            <td className="td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="type" display={s.type||'—'} val={s.type||''} options={['Retailer','Wholesale','Direct/Online','Distributor']} /></td>
+                            <td><EC {...ecProps} entity="sale" rowKey={s.id} field="productId"
+                              display={<><span className="dot" style={{background:PC[s.productId]||'#94a3b8'}}/>{prodDisplay(prodMap[s.productId])}</>}
+                              val={s.productId} options={prods.map(p=>({v:p.id,l:prodDisplay(p)}))} /></td>
+                            <td className="td-mono td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="batchId" display={s.batchId} val={s.batchId} options={bats.map(b=>({v:b.id,l:b.id+' ('+prodDisplay(prodMap[b.productId])+')' }))} /></td>
+                            <td><EC {...ecProps} entity="sale" rowKey={s.id} field="size" display={s.size} val={s.size} options={['100g','200g','500g']} /></td>
+                            <td className="td-r"><EC {...ecProps} entity="sale" rowKey={s.id} field="qty" display={s.qty + (isPartial && s.partialQty ? ` (${s.partialQty} sold)` : '')} val={s.qty} type="number" /></td>
+                            <td className="td-r td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="price" display={fmt(s.price)} val={s.price} type="number" /></td>
+                            <td className="td-r td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="disc" display={(s.disc||0)+'%'} val={s.disc||0} type="number" /></td>
+                            <td className="td-r">{fmt(inv)}</td>
+                            <td className="td-r td-bold" style={{color:'#16a34a'}}>{fmt(col)}</td>
+                            <td className="td-r" style={{color:out>0?'#dc2626':'#16a34a',fontWeight:600}}>{out>0?fmt(out):'—'}</td>
+                            <td>
+                              <EC {...ecProps} entity="sale" rowKey={s.id} field="paymentStatus" display={<PayBadge s={s.paymentStatus} />} val={s.paymentStatus||'Pending'} options={['Pending','Paid','Partial']} />
+                              {isPartial && (
+                                <button style={{marginLeft:3,fontSize:10,color:'#1A2B4A',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:4,padding:'2px 6px',cursor:'pointer',minHeight:26}}
+                                  onClick={()=>setPartialEditSale(partialEditSale===s.id?null:s.id)}>
+                                  {partialEditSale===s.id?'Close':'Update'}
+                                </button>
+                              )}
+                            </td>
+                            <td className="td-muted" style={{maxWidth:80,fontSize:10}}>{s.notes||''}</td>
+                            <td><button className="btn-del" onClick={()=>delSale(s.id)}>🗑</button></td>
+                          </tr>
+                          {isPartial && partialEditSale===s.id && (
+                            <tr>
+                              <td colSpan={16} style={{padding:'0 6px 6px'}}>
+                                <PartialEditPanel sale={s} saving={saving} onClose={()=>setPartialEditSale(null)} onSave={(pqty,pamt)=>savePartialSale(s,pqty,pamt)} />
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={7}>Totals ({filteredSals.length})</td>
+                      <td className="td-r">{saleTots.pcs.toLocaleString('en-IN')}</td>
+                      <td colSpan={2}></td>
+                      <td className="td-r">{fmt(saleTots.rev)}</td>
+                      <td className="td-r" style={{color:'#16a34a',fontWeight:700}}>{fmt(saleTots.collected)}</td>
+                      <td className="td-r" style={{color:'#dc2626',fontWeight:700}}>{fmt(Math.max(0,saleTots.rev-saleTots.collected))}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'stock' && (
+          <div>
+            <div className="section-heading">📦 Finished Goods Stock</div>
+            <Card>
+              <CardHead title={`Live stock (${filteredStock.length} of ${bats.length} batches)`} />
+              <FilterBar value={stockFilter} onChange={setStockFilter} placeholder="🔍  Search batch, product, status…" count={filteredStock.length} total={bats.length} />
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <PlainTH c="Batch ID" /><PlainTH c="Product" /><PlainTH c="KG Produced" r /><PlainTH c="KG Sold" r /><PlainTH c="KG in Hand" r />
+                    <th className="th-r">100g Pouches</th><th className="th-r">200g Pouches</th><th className="th-r">500g Pouches</th><PlainTH c="Status" />
+                  </tr></thead>
+                  <tbody>
+                    {filteredStock.map(b => {
+                      const st = bStats[b.id]; const bal = Math.max(0, st.kgBalance);
+                      const pct = b.kgProduced > 0 ? bal / b.kgProduced : 0;
+                      const dispStatus = bal <= 0 ? 'Out of stock' : pct < 0.2 ? 'Low stock' : 'In stock';
+                      return (
+                        <tr key={b.id}>
+                          <td className="td-mono">{b.id}</td>
+                          <td><span className="dot" style={{background:PC[b.productId]||'#94a3b8'}}/>{prodDisplay(prodMap[b.productId])}</td>
+                          <td className="td-r">{fmtKg(b.kgProduced)}</td>
+                          <td className="td-r td-muted">{fmtKg(st.kgSold)}</td>
+                          <td className="td-r td-bold">{fmtKg(bal)}</td>
+                          <td className="td-r">{Math.floor(bal/.1).toLocaleString('en-IN')}</td>
+                          <td className="td-r">{Math.floor(bal/.2).toLocaleString('en-IN')}</td>
+                          <td className="td-r">{Math.floor(bal/.5).toLocaleString('en-IN')}</td>
+                          <td><Badge s={dispStatus} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'expenses' && (
+          <div>
+            <div className="kpi-grid">
+              <KPI label="Total Expenses" value={fmt(expTots.total)} sub={`${expenses.length} entries`} />
+              <KPI label="Material Purchase Cost" value={fmt(expTots.opex)} accent="#9d174d" sub="All purchases since start of business" />
+              <KPI label="Asset Investments" value={fmt(expTots.invest)} accent="#3730a3" sub="Machines, equipment (one-time)" />
+            </div>
+            {sef && (
+              <FormPanel title="Add Expense" onClose={()=>{setSef(false);setNe({date:today(), type:'Material Purchase', paymentMode:'Cash'});}} onSubmit={doAddExpense}>
+                <Fld label="Date *"><input type="date" className="form-input" value={ne.date||''} onChange={e=>setNe({...ne,date:e.target.value})} /></Fld>
+                <Fld label="Expense Type *">
+                  <select className="form-select" value={ne.type||'Material Purchase'} onChange={e=>setNe({...ne,type:e.target.value})}>
+                    <option>Material Purchase</option><option>Asset / One-time Investment</option>
+                  </select>
+                </Fld>
+                <Fld label="Item Description *"><input className="form-input" placeholder="e.g. Peanut 10kg, Transport…" value={ne.itemName||''} onChange={e=>setNe({...ne,itemName:e.target.value})} /></Fld>
+                <Fld label="Vendor / Supplier"><input className="form-input" placeholder="Vendor name (optional)" value={ne.vendor||''} onChange={e=>setNe({...ne,vendor:e.target.value})} /></Fld>
+                <Fld label="Amount (₹) *"><input type="number" className="form-input" min="0" value={ne.amount||''} onChange={e=>setNe({...ne,amount:e.target.value})} /></Fld>
+                <Fld label="Payment Mode">
+                  <select className="form-select" value={ne.paymentMode||'Cash'} onChange={e=>setNe({...ne,paymentMode:e.target.value})}>
+                    {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
+                  </select>
+                </Fld>
+                <div className="full-row"><Fld label="Notes"><textarea className="form-textarea" placeholder="Optional…" value={ne.notes||''} onChange={e=>setNe({...ne,notes:e.target.value})} /></Fld></div>
+              </FormPanel>
+            )}
+            <Card>
+              <CardHead title={`Expense log (${filteredExpenses.length} of ${expenses.length})`}
+                action={<AddBtn onClick={()=>setSef(!sef)} label="Add Expense" disabled={saving} />} />
+              <FilterBar value={expenseFilter} onChange={setExpenseFilter} placeholder="🔍  Search vendor, item…" count={filteredExpenses.length} total={expenses.length}>
+                <select className="filter-select" value={expenseTypeFilt} onChange={e=>setExpenseTypeFilt(e.target.value)}>
+                  <option value="">All types</option>
+                  <option value="Material Purchase">Material Purchase</option>
+                  <option value="Asset / One-time Investment">Asset Investment</option>
+                </select>
+              </FilterBar>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>Date</th><th>Type</th><th>Item Description</th><th>Vendor</th>
+                    <th className="th-r">Amount (₹)</th><th>Payment Mode</th><th>Notes</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredExpenses.map(e => (
+                      <tr key={e.id}>
+                        <td className="td-muted"><EC {...ecProps} entity="expense" rowKey={e.id} field="date" display={e.date||'—'} val={e.date||''} type="date" /></td>
+                        <td><EC {...ecProps} entity="expense" rowKey={e.id} field="type" display={<ExpTypeBadge s={e.type} />} val={e.type||'Material Purchase'} options={['Material Purchase','Asset / One-time Investment']} /></td>
+                        <td className="td-bold"><EC {...ecProps} entity="expense" rowKey={e.id} field="itemName" display={e.itemName||'—'} val={e.itemName||''} /></td>
+                        <td className="td-muted"><EC {...ecProps} entity="expense" rowKey={e.id} field="vendor" display={e.vendor||'—'} val={e.vendor||''} /></td>
+                        <td className="td-r td-bold"><EC {...ecProps} entity="expense" rowKey={e.id} field="amount" display={fmt(e.amount)} val={e.amount} type="number" /></td>
+                        <td className="td-muted"><EC {...ecProps} entity="expense" rowKey={e.id} field="paymentMode" display={e.paymentMode||'Cash'} val={e.paymentMode||'Cash'} options={PAYMENT_MODES} /></td>
+                        <td className="td-muted" style={{maxWidth:120,fontSize:10}}><EC {...ecProps} entity="expense" rowKey={e.id} field="notes" display={e.notes||'—'} val={e.notes||''} /></td>
+                        <td><button className="btn-del" onClick={()=>delExpense(e.id)}>🗑</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4}>Total ({filteredExpenses.length} entries)</td>
+                      <td className="td-r">{fmt(filteredExpenses.reduce((a,e)=>a+e.amount,0))}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'pl' && (() => {
+          const pendingRev = +(tot.invoiced - tot.rev).toFixed(1);
+          const roi        = tot.inv > 0 ? ((tot.prof / tot.inv) * 100).toFixed(1) : '—';
+          const margin     = tot.rev > 0 ? ((tot.prof / tot.rev) * 100).toFixed(1) : '—';
+          return (
+            <div className="pl-two-col">
+              <Card>
+                <CardHead title="Profit & Loss Statement" />
+                <div className="pl-body">
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'#6b7280',letterSpacing:1,marginBottom:5}}>REVENUE</div>
+                    <div className="pl-row"><span style={{fontSize:12,color:'#111827'}}>Total Invoiced (billed)</span><span style={{fontSize:12,fontWeight:600}}>{fmt(tot.invoiced)}</span></div>
+                    <div className="pl-row"><span style={{fontSize:13,color:'#16a34a',fontWeight:600}}>Revenue Collected</span><span style={{fontSize:15,fontWeight:700,color:'#16a34a'}}>{fmt(tot.rev)}</span></div>
+                    <div className="pl-row"><span style={{fontSize:11,color:'#9ca3af'}}>Pending collection</span><span style={{fontSize:11,color:'#dc2626'}}>{fmt(pendingRev)}</span></div>
+                  </div>
+                  <div className="pl-divider"/>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'#6b7280',letterSpacing:1,marginBottom:5}}>COST OF GOODS SOLD</div>
+                    <div className="pl-row"><span style={{fontSize:12,color:'#111827'}}>Production cost (qty sold)</span><span style={{fontSize:12,color:'#6b7280'}}>— {fmt(tot.costUsed)}</span></div>
+                  </div>
+                  <div className="pl-divider"/>
+                  <div style={{marginBottom:10}}>
+                    <div className="pl-row"><span style={{fontSize:13,fontWeight:700,color:'#111827'}}>Gross Profit</span><span style={{fontSize:16,fontWeight:700,color:tot.prof>=0?'#16a34a':'#dc2626'}}>{fmt(tot.prof)}</span></div>
+                    <div className="pl-row"><span style={{fontSize:11,color:'#9ca3af'}}>Gross Margin · ROI</span><span style={{fontSize:11,color:'#6b7280'}}>{margin}% · {roi}%</span></div>
+                  </div>
+                  <div className="pl-divider"/>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'#6b7280',letterSpacing:1,marginBottom:5}}>MATERIAL PURCHASE COST <span style={{fontWeight:400,fontStyle:'italic'}}>(offline reference)</span></div>
+                    <div className="pl-row"><span style={{fontSize:12,color:'#111827'}}>Total purchases logged</span><span style={{fontSize:12,color:'#9d174d'}}>{fmt(expTots.opex)}</span></div>
+                    <div style={{fontSize:10,color:'#9ca3af',marginTop:3,fontStyle:'italic'}}>* Offline reference only. Not deducted from profit.</div>
+                  </div>
+                  <div className={`pl-result ${tot.prof>=0?'profit':'loss'}`}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <span>{tot.prof>=0?'✅ Profitable':'❌ In Loss'}</span>
+                      <span style={{fontSize:17}}>{fmt(tot.prof)}</span>
+                    </div>
+                    <div style={{fontSize:10,marginTop:3,opacity:.85}}>Sell-through: {tot.kgP>0?((tot.kgS/tot.kgP)*100).toFixed(1):'0'}% of KG produced</div>
+                  </div>
+                  {expTots.invest > 0 && (
+                    <div className="info-note" style={{marginTop:12}}>
+                      <strong>Asset Investments:</strong> {fmt(expTots.invest)} on machines &amp; equipment (not in P&L).
+                    </div>
+                  )}
+                </div>
+              </Card>
+              <div className="right-stack">
+                <Card>
+                  <CardHead title="By product" />
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>Product</th><th className="th-r">Cost Used</th><th className="th-r">Collected</th><th className="th-r">Profit</th><th className="th-r">Margin</th></tr></thead>
+                      <tbody>
+                        {perf.map((p,i) => (
+                          <tr key={p.id}>
+                            <td><span className="dot" style={{background:PCOLORS[i%PCOLORS.length],borderRadius:3}}/><strong>{prodDisplay(p)}</strong></td>
+                            <td className="td-r">{fmt(p.costUsed)}</td>
+                            <td className="td-r">{fmt(p.revenue)}</td>
+                            <td className="td-r"><span style={{color:p.profit>=0?'#16a34a':'#dc2626',fontWeight:700}}>{fmt(p.profit)}</span></td>
+                            <td className="td-r td-muted">{p.revenue?((p.profit/p.revenue)*100).toFixed(1)+'%':'—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+                <Card>
+                  <CardHead title="Revenue by pack size" />
+                  <div style={{padding:'10px 12px'}}>
+                    {['100g','200g','500g'].map(sz => {
+                      const szS = sals.filter(s=>s.size===sz);
+                      const rev = szS.reduce((a,s)=>a+net(s),0);
+                      const qty = szS.reduce((a,s)=>a+s.qty,0);
+                      const pct = tot.rev>0?(rev/tot.rev*100).toFixed(1):0;
+                      return (
+                        <div key={sz} style={{marginBottom:10}}>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+                            <span>{sz} · {qty.toLocaleString('en-IN')} pcs</span>
+                            <span style={{fontWeight:700}}>{fmt(rev)} <span style={{color:'#9ca3af',fontWeight:400}}>({pct}%)</span></span>
+                          </div>
+                          <div className="bar-track"><div className="bar-fill" style={{width:pct+'%'}} /></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          );
+        })()}
+
+        {tab === 'products' && (
+          <div>
+            {spf && (
+              <FormPanel title="Add product" onClose={()=>{setSpf(false);setNp({variants:[{size:'100g',unitCost:0,mrp:0}]});}} onSubmit={doAddProduct}>
+                <Fld label="Product ID *"><input className="form-input" placeholder="e.g. E" value={np.id||''} onChange={e=>setNp({...np,id:e.target.value})} /></Fld>
+                <Fld label="Product Name *"><input className="form-input" placeholder="Product name" value={np.name||''} onChange={e=>setNp({...np,name:e.target.value})} /></Fld>
+                <Fld label="Brand"><input className="form-input" placeholder="Brand name" value={np.masterBrand||''} onChange={e=>setNp({...np,masterBrand:e.target.value})} /></Fld>
+                <Fld label="Variant"><input className="form-input" placeholder="e.g. Classic, Premium" value={np.variantName||''} onChange={e=>setNp({...np,variantName:e.target.value})} /></Fld>
+                <Fld label="Category"><input className="form-input" placeholder="e.g. Herbal" value={np.category||''} onChange={e=>setNp({...np,category:e.target.value})} /></Fld>
+                <div className="full-row">
+                  <label className="field-label">Pack sizes &amp; pricing</label>
+                  {(np.variants||[]).map((v,i) => (
+                    <div key={i} className="variant-row">
+                      <div>
+                        <label className="field-label">Size</label>
+                        <select className="form-select" value={v.size||'100g'} onChange={e=>{const u=[...np.variants];u[i]={...v,size:e.target.value};setNp({...np,variants:u});}}>
+                          {['50g','100g','200g','250g','500g','1kg'].map(s=><option key={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div><label className="field-label">Unit Cost (₹)</label><input type="number" className="form-input" value={v.unitCost||0} onChange={e=>{const u=[...np.variants];u[i]={...v,unitCost:+e.target.value};setNp({...np,variants:u});}} /></div>
+                      <div><label className="field-label">MRP (₹)</label><input type="number" className="form-input" value={v.mrp||0} onChange={e=>{const u=[...np.variants];u[i]={...v,mrp:+e.target.value};setNp({...np,variants:u});}} /></div>
+                      <div className="btn-rm-variant"><button onClick={()=>{const u=[...np.variants];u.splice(i,1);setNp({...np,variants:u});}}>×</button></div>
+                    </div>
+                  ))}
+                  <button className="btn-add-variant" onClick={()=>setNp({...np,variants:[...(np.variants||[]),{size:'100g',unitCost:0,mrp:0}]})}>+ Add size</button>
+                </div>
+              </FormPanel>
+            )}
+            <Card>
+              <CardHead title={`Products (${prods.length})`} action={<AddBtn onClick={()=>setSpf(!spf)} label="Add product" disabled={saving} />} />
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <PlainTH c="ID" /><PlainTH c="Product Name" /><PlainTH c="Brand" /><PlainTH c="Variant" /><PlainTH c="Category" />
+                    <PlainTH c="Pack Size" /><PlainTH c="Unit Cost" r /><PlainTH c="MRP" r /><PlainTH c="Margin" r /><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {prods.map(p =>
+                      (p.variants && p.variants.length > 0 ? p.variants : [{}]).map((v, vi) => (
+                        <tr key={`${p.id}-${vi}`} style={vi > 0 ? {background:'#fcfcfc'} : {}}>
+                          <td className="td-mono td-muted">{vi === 0 ? p.id : ''}</td>
+                          <td>{vi === 0 ? <EC {...ecProps} entity="product" rowKey={p.id} field="name" display={p.name||'—'} val={p.name||''} type="text" /> : ''}</td>
+                          <td>{vi === 0 ? <EC {...ecProps} entity="product" rowKey={p.id} field="masterBrand" display={p.masterBrand||'—'} val={p.masterBrand||''} type="text" /> : ''}</td>
+                          <td>{vi === 0 ? <EC {...ecProps} entity="product" rowKey={p.id} field="variantName" display={p.variantName||'—'} val={p.variantName||''} type="text" /> : ''}</td>
+                          <td className="td-muted">{vi === 0 ? <EC {...ecProps} entity="product" rowKey={p.id} field="category" display={p.category||'—'} val={p.category||''} type="text" /> : ''}</td>
+                          <td>{v.size ? <EC {...ecProps} entity="product" rowKey={`${p.id}:${v.size}`} field="size" display={v.size} val={v.size} options={['50g','100g','200g','250g','500g','1kg']} /> : ''}</td>
+                          <td className="td-r">{v.size ? <EC {...ecProps} entity="product" rowKey={`${p.id}:${v.size}`} field="unitCost" display={fmt(v.unitCost)} val={v.unitCost} type="number" /> : ''}</td>
+                          <td className="td-r">{v.size ? <EC {...ecProps} entity="product" rowKey={`${p.id}:${v.size}`} field="mrp" display={fmt(v.mrp)} val={v.mrp} type="number" /> : ''}</td>
+                          <td className="td-r td-muted">{v.mrp ? ((v.mrp - v.unitCost) / v.mrp * 100).toFixed(1) + '%' : '—'}</td>
+                          <td>{vi === 0 ? <button className="btn-del" onClick={()=>delProduct(p.id)}>🗑</button> : ''}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'customers' && (
+          <div>
+            <div className="kpi-grid" style={{marginBottom:12}}>
+              <KPI label="Total customers" value={customers.length} />
+              <KPI label="Total invoiced" value={fmt(customers.reduce((a,c)=>a+c.totalInvoiced,0))} />
+              <KPI label="Total collected" value={fmt(customers.reduce((a,c)=>a+c.totalCollected,0))} accent="#16a34a" />
+              <KPI label="Outstanding" value={fmt(Math.max(0,customers.reduce((a,c)=>a+c.totalPending,0)))} accent="#dc2626" />
+            </div>
+            <Card>
+              <CardHead title={`Customer list (${filteredCustomers.length} of ${customers.length})`} />
+              <FilterBar value={customerFilter} onChange={setCustomerFilter} placeholder="🔍  Search name, type, mobile…" count={filteredCustomers.length} total={customers.length} />
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>Customer</th><th>Mobile</th><th>Type</th>
+                    <th className="th-r">Invoices</th><th className="th-r">Invoiced</th><th className="th-r">Collected</th><th className="th-r">Outstanding</th>
+                    <th>Status</th><th>Products</th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredCustomers.map(c => {
+                      const pending = +Math.max(0,c.totalPending).toFixed(1);
+                      const collected = +c.totalCollected.toFixed(1);
+                      const total = +c.totalInvoiced.toFixed(1);
+                      const payLabel = pending<=0?'Paid':collected<=0?'Pending':'Partial';
+                      const uniqueProds = [...new Set(c.purchases.map(p=>p.product))];
+                      return (
+                        <tr key={c.name}>
+                          <td className="td-bold">{c.name}</td>
+                          <td style={{minWidth:110}}>
+                            <EC {...ecProps} entity="custMobile" rowKey={c.name} field="mobile"
+                              display={c.mobile ? <span>📱 {c.mobile}</span> : <span style={{color:'#d1d5db',fontSize:10,fontStyle:'italic'}}>add mobile</span>}
+                              val={c.mobile||''} type="tel" />
+                          </td>
+                          <td className="td-muted">{c.type||'—'}</td>
+                          <td className="td-r">{c.purchases.length}</td>
+                          <td className="td-r td-bold">{fmt(total)}</td>
+                          <td className="td-r" style={{color:'#16a34a',fontWeight:600}}>{fmt(collected)}</td>
+                          <td className="td-r" style={{color:pending>0?'#dc2626':'#16a34a',fontWeight:600}}>{fmt(pending)}</td>
+                          <td><PayBadge s={payLabel} /></td>
+                          <td style={{fontSize:11,color:'#374151'}}>{uniqueProds.join(', ')}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+            {filteredCustomers.map(c => (
+              <Card key={c.name} style={{marginTop:10}}>
+                <CardHead title={`${c.name}${c.mobile ? ' · 📱 '+c.mobile : ''} — History`} />
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr>
+                      <th>Invoice</th><th>Date</th><th>Product</th><th>Size</th>
+                      <th className="th-r">Qty</th><th className="th-r">Invoice Amt</th><th className="th-r">Collected</th><th className="th-r">Outstanding</th><th>Status</th>
+                    </tr></thead>
+                    <tbody>
+                      {[...c.purchases].reverse().map(p => (
+                        <tr key={p.invoiceId}>
+                          <td className="td-mono">{p.invoiceId}</td>
+                          <td className="td-muted">{p.date}</td>
+                          <td>{p.product}</td>
+                          <td>{p.size}</td>
+                          <td className="td-r">{p.qty}{p.paymentStatus==='Partial'&&p.partialQty>0?<span style={{fontSize:9,color:'#b45309',marginLeft:3}}>({p.partialQty} sold)</span>:''}</td>
+                          <td className="td-r">{fmt(p.invoicedAmount)}</td>
+                          <td className="td-r td-bold" style={{color:'#16a34a'}}>{fmt(p.collectedAmount)}</td>
+                          <td className="td-r" style={{color:p.outstandingAmount>0?'#dc2626':'#16a34a',fontWeight:600}}>{p.outstandingAmount>0?fmt(p.outstandingAmount):'—'}</td>
+                          <td><PayBadge s={p.paymentStatus} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={5}>Total</td>
+                        <td className="td-r">{fmt(c.totalInvoiced)}</td>
+                        <td className="td-r" style={{color:'#16a34a',fontWeight:600}}>{fmt(c.totalCollected)}</td>
+                        <td className="td-r" style={{color:'#dc2626',fontWeight:600}}>{fmt(Math.max(0,c.totalPending))}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {tab === 'costmaster' && (() => {
+          const rmMap = {}; rawMaterials.forEach(r => { rmMap[r.id] = r; });
+          const unitToGrams = u => u==='1kg'||u==='1ltr' ? 1000 : u==='500g' ? 500 : u==='250g' ? 250 : u==='100g' ? 100 : 1;
+          const recipeForProd = prodId => recipes.filter(r => r.productId === prodId);
+          const recipeCost1kg = prodId => {
+            const items = recipeForProd(prodId);
+            return items.reduce((sum, item) => {
+              if (item.rawMatId && rmMap[item.rawMatId]) {
+                const rm = rmMap[item.rawMatId];
+                const ug = unitToGrams(rm.unit);
+                const costPer1g = ug > 0 ? rm.cost / ug : 0;
+                return sum + costPer1g * item.qtyGrams;
+              }
+              return sum;
+            }, 0);
+          };
+          const sizeMap = {'100g': 100, '200g': 200, '250g': 250, '500g': 500, '1000g': 1000, '1kg': 1000};
+
+          return (
+            <div>
+              <div className="card">
+                <div className="cm-tabs">
+                  {[
+                    {id:'table4', label:'📦 Raw Material Cost'},
+                    {id:'table3', label:'🛍 Packaging Expense'},
+                    {id:'table2', label:'🧪 Product Recipe & Cost'},
+                    {id:'table1', label:'📊 Product Expense Sheet'},
+                  ].map(t => (
+                    <button key={t.id} className={'cm-tab-btn' + (cmTab===t.id?' active':'')} onClick={() => setCmTab(t.id)}>{t.label}</button>
+                  ))}
+                </div>
+
+                {cmTab === 'table4' && (
+                  <div className="cm-section">
+                    <div className="card-head">
+                      <span className="card-title">Raw Material Cost (per 1kg)</span>
+                      <AddBtn onClick={() => setShowRmForm(!showRmForm)} label="Add Item" disabled={saving} />
+                    </div>
+                    {showRmForm && (
+                      <div className="form-panel" style={{margin:'10px 0'}}>
+                        <div className="form-panel-head">
+                          <span className="form-panel-title">Add Raw Material</span>
+                          <button className="btn-close" onClick={() => setShowRmForm(false)}>×</button>
+                        </div>
+                        <div className="form-grid">
+                          <Fld label="Item Name *"><input className="form-input" placeholder="e.g. Peanut" value={newRm.item||''} onChange={e => setNewRm({...newRm, item:e.target.value})} /></Fld>
+                          <Fld label="Unit">
+                            <select className="form-select" value={newRm.unit||'1kg'} onChange={e => setNewRm({...newRm, unit:e.target.value})}>
+                              {['1kg','1ltr','100g','500g','250g','each'].map(u => <option key={u}>{u}</option>)}
+                            </select>
+                          </Fld>
+                          <Fld label="Cost (₹) per unit *"><input type="number" className="form-input" min="0" placeholder="e.g. 115" value={newRm.cost||''} onChange={e => setNewRm({...newRm, cost:e.target.value})} /></Fld>
+                          <Fld label="Make / Brand"><input className="form-input" placeholder="e.g. Eastern" value={newRm.make||''} onChange={e => setNewRm({...newRm, make:e.target.value})} /></Fld>
+                          <Fld label="As of Date"><input type="date" className="form-input" value={newRm.asOfDate||''} onChange={e => setNewRm({...newRm, asOfDate:e.target.value})} /></Fld>
+                          <div className="full-row"><Fld label="Notes"><textarea className="form-textarea" placeholder="Optional notes…" value={newRm.notes||''} onChange={e => setNewRm({...newRm, notes:e.target.value})} /></Fld></div>
+                        </div>
+                        <div className="form-actions">
+                          <button className="btn-save" onClick={doAddRawMaterial}>Save</button>
+                          <button className="btn-cancel" onClick={() => setShowRmForm(false)}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="table-wrap">
+                      <table>
+                        <thead><tr><th>#</th><th>Item</th><th>Unit</th><th className="th-r">Cost (₹/unit)</th><th className="th-r">Per 1g (₹)</th><th>Make</th><th>As of Date</th><th>Notes</th><th></th></tr></thead>
+                        <tbody>
+                          {rawMaterials.length === 0 ? (
+                            <tr><td colSpan={9} style={{textAlign:'center',color:'#9ca3af',padding:20}}>No raw materials added yet. Click "+ Add Item" to start.</td></tr>
+                          ) : rawMaterials.map((r, i) => {
+                            const unitGrams = r.unit==='1kg'||r.unit==='1ltr' ? 1000 : r.unit==='500g' ? 500 : r.unit==='250g' ? 250 : r.unit==='100g' ? 100 : 1;
+                            const per1g = unitGrams > 0 ? r.cost / unitGrams : 0;
+                            return (
+                              <tr key={r.id}>
+                                <td className="td-muted td-mono">{i+1}</td>
+                                <td className="td-bold"><EC entity="rawMat" rowKey={r.id} field="item" display={r.item} val={r.item} type="text" {...ecProps} /></td>
+                                <td className="td-muted"><EC entity="rawMat" rowKey={r.id} field="unit" display={r.unit} val={r.unit} options={['1kg','1ltr','100g','500g','250g','each']} {...ecProps} /></td>
+                                <td className="td-r"><EC entity="rawMat" rowKey={r.id} field="cost" display={`₹${r.cost.toFixed(2)}`} val={r.cost} type="number" {...ecProps} /></td>
+                                <td className="td-r td-muted">₹{per1g.toFixed(4)}</td>
+                                <td className="td-muted"><EC entity="rawMat" rowKey={r.id} field="make" display={r.make||'—'} val={r.make||''} type="text" {...ecProps} /></td>
+                                <td className="td-muted"><EC entity="rawMat" rowKey={r.id} field="asOfDate" display={r.asOfDate||'—'} val={r.asOfDate||''} type="date" {...ecProps} /></td>
+                                <td className="td-muted" style={{fontSize:10,maxWidth:120}}><EC entity="rawMat" rowKey={r.id} field="notes" display={r.notes||<span style={{color:'#d1d5db',fontSize:10}}>add note</span>} val={r.notes||''} type="text" {...ecProps} /></td>
+                                <td><button className="btn-del" onClick={() => delRawMaterial(r.id)}>🗑</button></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        {rawMaterials.length > 0 && (
+                          <tfoot><tr><td colSpan={3}>Total ({rawMaterials.length} items)</td><td className="td-r">₹{rawMaterials.reduce((a,r)=>a+r.cost,0).toFixed(2)}</td><td colSpan={5}></td></tr></tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {cmTab === 'table3' && (
+                  <div className="cm-section">
+                    <div className="card-head">
+                      <span className="card-title">Packaging Expense (Pouches & Stickers)</span>
+                      <AddBtn onClick={() => setShowPkgForm(!showPkgForm)} label="Add Item" disabled={saving} />
+                    </div>
+                    {showPkgForm && (
+                      <div className="form-panel" style={{margin:'10px 0'}}>
+                        <div className="form-panel-head">
+                          <span className="form-panel-title">Add Packaging Item</span>
+                          <button className="btn-close" onClick={() => setShowPkgForm(false)}>×</button>
+                        </div>
+                        <div className="form-grid">
+                          <Fld label="Pouch Size *">
+                            <select className="form-select" value={newPkg.pouchSize||''} onChange={e => setNewPkg({...newPkg, pouchSize:e.target.value})}>
+                              <option value="">Select…</option>
+                              {['100g','200g','250g','500g','1000g','Other'].map(s => <option key={s}>{s}</option>)}
+                            </select>
+                          </Fld>
+                          <Fld label="Cost per Pouch (₹) *"><input type="number" className="form-input" min="0" step="0.01" placeholder="e.g. 6.00" value={newPkg.costPerPouch||''} onChange={e => setNewPkg({...newPkg, costPerPouch:e.target.value})} /></Fld>
+                          <Fld label="Cost of Sticker (Front+Back) (₹)"><input type="number" className="form-input" min="0" step="0.01" placeholder="e.g. 2.67" value={newPkg.costPerSticker||''} onChange={e => setNewPkg({...newPkg, costPerSticker:e.target.value})} /></Fld>
+                          <div className="full-row"><Fld label="Notes"><textarea className="form-textarea" placeholder="Optional notes…" value={newPkg.notes||''} onChange={e => setNewPkg({...newPkg, notes:e.target.value})} /></Fld></div>
+                        </div>
+                        {(newPkg.costPerPouch || newPkg.costPerSticker) && (
+                          <div className="form-preview">Total cost per pack: ₹{(+(newPkg.costPerPouch||0) + +(newPkg.costPerSticker||0)).toFixed(2)}</div>
+                        )}
+                        <div className="form-actions">
+                          <button className="btn-save" onClick={doAddPackaging}>Save</button>
+                          <button className="btn-cancel" onClick={() => setShowPkgForm(false)}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="table-wrap">
+                      <table>
+                        <thead><tr><th>#</th><th>Pouch Size</th><th className="th-r">Cost/Pouch (₹)</th><th className="th-r">Cost/Sticker (₹)</th><th className="th-r">Total per Pack (₹)</th><th>Notes</th><th></th></tr></thead>
+                        <tbody>
+                          {packaging.length === 0 ? (
+                            <tr><td colSpan={7} style={{textAlign:'center',color:'#9ca3af',padding:20}}>No packaging items yet. Click "+ Add Item" to start.</td></tr>
+                          ) : packaging.map((p, i) => {
+                            const tc = +(p.costPerPouch||0) + +(p.costPerSticker||0);
+                            return (
+                              <tr key={p.id}>
+                                <td className="td-muted td-mono">{i+1}</td>
+                                <td className="td-bold"><EC entity="packaging" rowKey={p.id} field="pouchSize" display={p.pouchSize} val={p.pouchSize} options={['100g','200g','250g','500g','1000g','Other']} {...ecProps} /></td>
+                                <td className="td-r"><EC entity="packaging" rowKey={p.id} field="costPerPouch" display={`₹${(p.costPerPouch||0).toFixed(2)}`} val={p.costPerPouch||0} type="number" {...ecProps} /></td>
+                                <td className="td-r"><EC entity="packaging" rowKey={p.id} field="costPerSticker" display={`₹${(p.costPerSticker||0).toFixed(2)}`} val={p.costPerSticker||0} type="number" {...ecProps} /></td>
+                                <td className="td-r td-bold" style={{color:'#1e40af'}}>₹{tc.toFixed(2)}</td>
+                                <td className="td-muted" style={{fontSize:10,maxWidth:180}}><EC entity="packaging" rowKey={p.id} field="notes" display={p.notes||<span style={{color:'#d1d5db',fontSize:10}}>add note</span>} val={p.notes||''} type="text" {...ecProps} /></td>
+                                <td><button className="btn-del" onClick={() => delPackaging(p.id)}>🗑</button></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        {packaging.length > 0 && (
+                          <tfoot><tr><td colSpan={4}>Total ({packaging.length} items)</td><td className="td-r">₹{packaging.reduce((a,p)=>a+(+(p.costPerPouch||0))+(+(p.costPerSticker||0)),0).toFixed(2)}</td><td colSpan={2}></td></tr></tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {cmTab === 'table2' && (
+                  <div className="cm-section">
+                    <div className="card-head"><span className="card-title">Product Recipe &amp; Cost Calculation (per 1kg)</span></div>
+                    <div className="cm-recipe-selector">
+                      <label>Select Product:</label>
+                      <select value={cmRecipeProd} onChange={e => { setCmRecipeProd(e.target.value); setNewRec({productId:e.target.value}); }}>
+                        <option value="">— All products —</option>
+                        {prods.map(p => <option key={p.id} value={p.id}>{prodDisplay(p)}</option>)}
+                      </select>
+                      {cmRecipeProd && <AddBtn onClick={() => setShowRecForm(!showRecForm)} label="Add Ingredient" disabled={saving} />}
+                    </div>
+                    {showRecForm && cmRecipeProd && (
+                      <div className="form-panel" style={{margin:'10px 0'}}>
+                        <div className="form-panel-head">
+                          <span className="form-panel-title">Add Ingredient to {prodDisplay(prods.find(p=>p.id===cmRecipeProd))}</span>
+                          <button className="btn-close" onClick={() => setShowRecForm(false)}>×</button>
+                        </div>
+                        <div className="form-grid">
+                          <Fld label="Raw Material (from master)">
+                            <select className="form-select" value={newRec.rawMatId||''} onChange={e => { const rm = rawMaterials.find(r => r.id === e.target.value); setNewRec({...newRec, rawMatId:e.target.value, itemName:rm?rm.item:newRec.itemName}); }}>
+                              <option value="">— Select or type below —</option>
+                              {rawMaterials.map(r => <option key={r.id} value={r.id}>{r.item} (₹{r.cost}/{r.unit})</option>)}
+                            </select>
+                          </Fld>
+                          <Fld label="Item Name *"><input className="form-input" placeholder="Ingredient name" value={newRec.itemName||''} onChange={e => setNewRec({...newRec, itemName:e.target.value})} /></Fld>
+                          <Fld label="Qty in grams (for 1kg batch)"><input type="number" className="form-input" min="0" placeholder="e.g. 1000" value={newRec.qtyGrams||''} onChange={e => setNewRec({...newRec, qtyGrams:e.target.value})} /></Fld>
+                          <Fld label="Notes"><input className="form-input" placeholder="Optional" value={newRec.notes||''} onChange={e => setNewRec({...newRec, notes:e.target.value})} /></Fld>
+                        </div>
+                        <div className="form-actions">
+                          <button className="btn-save" onClick={doAddRecipeItem}>Save</button>
+                          <button className="btn-cancel" onClick={() => setShowRecForm(false)}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                    {(cmRecipeProd ? [prods.find(p=>p.id===cmRecipeProd)].filter(Boolean) : prods).map(prod => {
+                      const items = recipeForProd(prod.id);
+                      const totalRawCost = recipeCost1kg(prod.id);
+                      return (
+                        <div key={prod.id} style={{marginBottom:16}}>
+                          <div className="cm-product-header">
+                            <span className="cm-product-header-title">🧪 {prodDisplay(prod)} — Recipe for 1kg</span>
+                            <span className="cm-product-header-cost">Raw material cost: ₹{totalRawCost.toFixed(4)}/kg</span>
+                          </div>
+                          <div className="table-wrap">
+                            <table>
+                              <thead><tr><th>#</th><th>Ingredient</th><th className="th-r">Qty (g)</th><th className="th-r">Cost/1g (₹)</th><th className="th-r">Item Cost (₹)</th><th>Notes</th><th></th></tr></thead>
+                              <tbody>
+                                {items.length === 0 ? (
+                                  <tr><td colSpan={7} style={{textAlign:'center',color:'#9ca3af',padding:16,fontSize:12}}>No recipe items yet.</td></tr>
+                                ) : items.map((item, i) => {
+                                  const rm = rmMap[item.rawMatId];
+                                  const ug = rm ? unitToGrams(rm.unit) : 1;
+                                  const costPer1g = rm && ug > 0 ? rm.cost / ug : 0;
+                                  const itemCost = costPer1g * item.qtyGrams;
+                                  return (
+                                    <tr key={item.id}>
+                                      <td className="td-muted td-mono">{i+1}</td>
+                                      <td className="td-bold"><EC entity="recipe" rowKey={item.id} field="itemName" display={item.itemName} val={item.itemName} type="text" {...ecProps} /></td>
+                                      <td className="td-r"><EC entity="recipe" rowKey={item.id} field="qtyGrams" display={item.qtyGrams} val={item.qtyGrams} type="number" {...ecProps} /></td>
+                                      <td className="td-r td-muted">₹{costPer1g.toFixed(4)}</td>
+                                      <td className="td-r">₹{itemCost.toFixed(4)}</td>
+                                      <td className="td-muted" style={{fontSize:10}}><EC entity="recipe" rowKey={item.id} field="notes" display={item.notes||<span style={{color:'#d1d5db',fontSize:10}}>add note</span>} val={item.notes||''} type="text" {...ecProps} /></td>
+                                      <td><button className="btn-del" onClick={() => delRecipeItem(item.id)}>🗑</button></td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              {items.length > 0 && (
+                                <tfoot>
+                                  <tr><td colSpan={4} className="td-r" style={{fontWeight:700}}>Total 1kg raw material cost:</td><td className="td-r" style={{fontWeight:700,color:'#15803d'}}>₹{totalRawCost.toFixed(4)}</td><td colSpan={2}></td></tr>
+                                  <tr><td colSpan={4} className="td-r" style={{fontSize:10,color:'#6b7280'}}>Cost for 100g:</td><td className="td-r td-muted">₹{(totalRawCost/10).toFixed(4)}</td><td colSpan={2}></td></tr>
+                                  <tr><td colSpan={4} className="td-r" style={{fontSize:10,color:'#6b7280'}}>Cost for 200g:</td><td className="td-r td-muted">₹{(totalRawCost/5).toFixed(4)}</td><td colSpan={2}></td></tr>
+                                  <tr><td colSpan={4} className="td-r" style={{fontSize:10,color:'#6b7280'}}>Cost for 500g:</td><td className="td-r td-muted">₹{(totalRawCost/2).toFixed(4)}</td><td colSpan={2}></td></tr>
+                                </tfoot>
+                              )}
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {cmTab === 'table1' && (
+                  <div className="cm-section">
+                    <div className="card-head"><span className="card-title">📊 Product Expense Sheet — Pricing & Margin Analysis</span></div>
+                    <div className="info-note" style={{margin:'0 0 12px'}}>
+                      <strong>Landing Cost</strong> = Raw Material Cost + Packaging Cost (per pack size). Click any editable cell to update pricing inline.
+                    </div>
+                    <div className="table-wrap" style={{overflowX:'auto'}}>
+                      <table style={{minWidth:900}}>
+                        <thead>
+                          <tr>
+                            <th rowSpan={2}>#</th><th rowSpan={2}>Product</th><th rowSpan={2}>Pack Size</th>
+                            <th className="th-r" rowSpan={2}>Raw Mat Cost (₹)</th><th className="th-r" rowSpan={2}>Pkg Cost (₹)</th>
+                            <th className="th-r" rowSpan={2} style={{color:'#1e40af'}}>Landing Cost (₹)</th>
+                            <th className="th-r" rowSpan={2}>Print MRP (₹) ✏️</th>
+                            <th colSpan={3} style={{textAlign:'center',background:'#fef3c7',color:'#92400e'}}>Via Retailer</th>
+                            <th colSpan={3} style={{textAlign:'center',background:'#f0fdf4',color:'#15803d'}}>Direct to Customer</th>
+                          </tr>
+                          <tr>
+                            <th className="th-r" style={{background:'#fef3c7',color:'#92400e'}}>Retailer Sell Price (₹) ✏️</th>
+                            <th className="th-r" style={{background:'#fef3c7',color:'#92400e'}}>Retailer Margin (%)</th>
+                            <th className="th-r" style={{background:'#fef3c7',color:'#92400e'}}>Our Profit / Margin</th>
+                            <th className="th-r" style={{background:'#f0fdf4',color:'#15803d'}}>Customer Price (₹) ✏️</th>
+                            <th className="th-r" style={{background:'#f0fdf4',color:'#15803d'}}>Our Profit (₹)</th>
+                            <th className="th-r" style={{background:'#f0fdf4',color:'#15803d'}}>Our Margin (%)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {prods.length === 0 ? (
+                            <tr><td colSpan={13} style={{textAlign:'center',color:'#9ca3af',padding:20}}>No products configured.</td></tr>
+                          ) : prods.flatMap((prod, pi) => {
+                            const rawCost1kg = recipeCost1kg(prod.id);
+                            const variants = prod.variants && prod.variants.length > 0 ? prod.variants : [];
+                            if (!variants.length) return [<tr key={prod.id+'-novar'}><td className="td-muted">{pi+1}</td><td className="td-bold">{prodDisplay(prod)}</td><td colSpan={11} style={{color:'#9ca3af',fontSize:11}}>No pack sizes configured</td></tr>];
+                            return variants.map((v, vi) => {
+                              const sizeGrams = sizeMap[v.size] || parseFloat(v.size) || 0;
+                              const rawCostForSize = rawCost1kg * (sizeGrams / 1000);
+                              const pkgsForSize = packaging.filter(p => p.pouchSize === v.size || p.pouchSize.toLowerCase() === v.size.toLowerCase());
+                              const pkgCostPerPouch = pkgsForSize.reduce((sum, p) => sum + (+(p.costPerPouch||0)) + (+(p.costPerSticker||0)), 0);
+                              const landingCost = rawCostForSize + pkgCostPerPouch;
+                              const printMrp = v.printMrp || v.mrp || 0;
+                              const retailSellPrice = v.retailSellPrice || 0;
+                              const customerPrice = v.customerPrice || 0;
+                              const retailerMarginPct = printMrp > 0 && retailSellPrice > 0 ? (((printMrp - retailSellPrice) / printMrp) * 100).toFixed(1) : '—';
+                              const ourProfitRetail = retailSellPrice > 0 ? retailSellPrice - landingCost : null;
+                              const ourMarginRetail = retailSellPrice > 0 ? ((ourProfitRetail / retailSellPrice) * 100).toFixed(1) : '—';
+                              const ourProfitDirect = customerPrice > 0 ? customerPrice - landingCost : null;
+                              const ourMarginDirect = customerPrice > 0 ? ((ourProfitDirect / customerPrice) * 100).toFixed(1) : '—';
+                              const varKey = `${prod.id}:${v.size}`;
+                              return (
+                                <tr key={`${prod.id}-${vi}`} style={{borderTop: vi===0 ? '2px solid #e5e7eb' : undefined}}>
+                                  <td className="td-muted td-mono">{vi===0?pi+1:''}</td>
+                                  <td className="td-bold">{vi===0?prodDisplay(prod):''}</td>
+                                  <td style={{fontWeight:600}}>{v.size}</td>
+                                  <td className="td-r td-muted">₹{rawCostForSize.toFixed(2)}</td>
+                                  <td className="td-r td-muted">₹{pkgCostPerPouch.toFixed(2)}</td>
+                                  <td className="td-r td-bold" style={{color:'#1e40af',fontSize:13}}>₹{landingCost.toFixed(2)}</td>
+                                  <td className="td-r"><EC entity="product" rowKey={varKey} field="printMrp" display={printMrp > 0 ? `₹${printMrp.toFixed(2)}` : <span style={{color:'#9ca3af',fontSize:10}}>tap to set</span>} val={printMrp} type="number" {...ecProps} /></td>
+                                  <td className="td-r" style={{background:'#fffbeb'}}><EC entity="product" rowKey={varKey} field="retailSellPrice" display={retailSellPrice > 0 ? `₹${retailSellPrice.toFixed(2)}` : <span style={{color:'#9ca3af',fontSize:10}}>tap to set</span>} val={retailSellPrice} type="number" {...ecProps} /></td>
+                                  <td className="td-r" style={{background:'#fffbeb',color:retailerMarginPct!=='—'?'#92400e':'#9ca3af',fontWeight:600}}>{retailerMarginPct !== '—' ? retailerMarginPct + '%' : '—'}</td>
+                                  <td className="td-r" style={{background:'#fffbeb'}}>{ourProfitRetail !== null ? <div><div style={{fontWeight:700,color:ourProfitRetail>=0?'#15803d':'#dc2626',fontSize:12}}>₹{ourProfitRetail.toFixed(2)}</div><div style={{fontSize:10,color:'#9ca3af'}}>{ourMarginRetail}%</div></div> : '—'}</td>
+                                  <td className="td-r" style={{background:'#f0fdf4'}}><EC entity="product" rowKey={varKey} field="customerPrice" display={customerPrice > 0 ? `₹${customerPrice.toFixed(2)}` : <span style={{color:'#9ca3af',fontSize:10}}>tap to set</span>} val={customerPrice} type="number" {...ecProps} /></td>
+                                  <td className="td-r" style={{background:'#f0fdf4',fontWeight:700,color:ourProfitDirect!==null?(ourProfitDirect>=0?'#15803d':'#dc2626'):'#9ca3af'}}>{ourProfitDirect !== null ? `₹${ourProfitDirect.toFixed(2)}` : '—'}</td>
+                                  <td className="td-r" style={{background:'#f0fdf4',fontWeight:600,color:ourMarginDirect!=='—'?'#15803d':'#9ca3af'}}>{ourMarginDirect !== '—' ? ourMarginDirect + '%' : '—'}</td>
+                                </tr>
+                              );
+                            });
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode><App /></React.StrictMode>
+);
+  </script>
+</body>
+</html>
