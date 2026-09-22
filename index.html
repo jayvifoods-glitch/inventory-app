@@ -430,25 +430,376 @@ thead th[rowspan] { vertical-align: middle; }
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback } = React;
 
-// ── CONFIGURATION — paste your GAS deployment URL here ────────
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxJYsQyLQsu120rbfhlJyKVQFzCaInT01NVNeIimQsL4kRG5HHjR322oJ1mUSrmldeG/exec';
-// Example: 'https://script.google.com/macros/s/AKfycb.../exec'
+// ══════════════════════════════════════════════════════════════════════════
+//  SUPABASE CONFIGURATION — fill these in after you create your project.
+//  SUPABASE_ANON_KEY is browser-safe by design (Row Level Security decides
+//  what it can actually do) — never put a service-role key here.
+// ══════════════════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://qbeiyuyxupupngjwivzo.supabase.co';       // e.g. 'https://xxxxx.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_EP4YI-MxAp3RklqMBWyxMQ_AdkcDRD7';
 
-// ── API helpers (replaces google.script.run) ─────────────────
-const gasGet = () =>
-  fetch(GAS_URL)
-    .then(r => { if (!r.ok) throw new Error('Network error ' + r.status); return r.json(); });
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const gasPost = (action, data) =>
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ action, data })
-  }).then(r => { if (!r.ok) throw new Error('Network error ' + r.status); return r.json(); });
+// ══════════════════════════════════════════════════════════════════════════
+//  DATA SERVICE LAYER — everything below this banner talks to Supabase.
+//  Nothing outside this banner (the UI / business-logic code below) knows
+//  or cares that the backend changed from Google Sheets to Postgres — it
+//  still calls loadAll() once and dbWrite(actionName, payload) for every
+//  write, exactly as the old gasGet()/gasPost() did. This keeps the entire
+//  UI and calculation logic below unchanged.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ---- small camelCase <-> snake_case row mappers ---------------------------
+const mapBatchRow = r => ({
+  id: r.id, productId: r.product_id, prodDate: r.production_date, expDate: r.expiry_date,
+  kgProduced: +r.quantity_produced_kg, costPerKg: +r.unit_cost_per_kg,
+  kgReturned: +r.quantity_returned_kg, kgDamaged: +r.quantity_damaged_kg, notes: r.notes || '',
+});
+const mapSaleRow = r => ({
+  id: r.id,                         // real uuid — used for edits/deletes/React keys
+  invoiceNo: r.legacy_invoice_no || '',   // original Excel invoice number — DISPLAY ONLY, not unique
+  date: r.sale_date, customer: r.customers ? r.customers.name : '', type: r.sale_type,
+  productId: r.product_id, batchId: r.batch_id, size: r.product_variants ? r.product_variants.size : '',
+  qty: +r.quantity, price: +r.unit_price, disc: +(r.discount_pct || 0),
+  paymentStatus: r.payment_status || 'Pending', partialQty: +(r.partial_qty || 0),
+  partialAmount: +(r.partial_amount || 0), notes: r.notes || '',
+});
+const mapExpenseRow = r => ({
+  id: r.id, date: r.expense_date, type: r.type, vendor: r.vendor || '', itemName: r.item_name || '',
+  amount: +r.amount, paymentMode: r.payment_mode || '', notes: r.notes || '',
+});
+const mapRawMatRow = r => ({
+  id: r.id, item: r.item, unit: r.unit, cost: +r.cost, make: r.make || '', notes: r.notes || '',
+});
+const mapPackagingRow = r => ({
+  id: r.id, pouchSize: r.pouch_size, costPerPouch: +r.cost_per_pouch, costPerSticker: +r.cost_per_sticker,
+  qty: +r.qty, stickerQty: +r.sticker_qty, noOfSheets: +r.no_of_sheets, notes: r.notes || '',
+  active: r.active,
+});
+const mapRecipeRow = r => ({
+  id: r.id, productId: r.product_id, rawMatId: r.raw_material_id,
+  componentProductId: r.component_product_id, componentType: r.component_type,
+  itemName: r.item_name, qtyGrams: +r.qty_grams, notes: r.notes || '',
+});
+
+async function resolveOrCreateCustomer(name) {
+  const clean = (name || '').trim().replace(/\s+/g, ' ');
+  if (!clean) throw new Error('Customer name is required.');
+  const { data: existing } = await sb.from('customers').select('id').ilike('name', clean).limit(1);
+  if (existing && existing.length) return existing[0].id;
+  const { data: created, error } = await sb.from('customers').insert({ name: clean }).select('id').single();
+  if (error) throw error;
+  return created.id;
+}
+
+async function resolveVariantId(productId, size) {
+  if (!productId || !size) return null;
+  const { data } = await sb.from('product_variants').select('id')
+    .eq('product_id', productId).eq('size', size).limit(1);
+  return data && data.length ? data[0].id : null;
+}
+
+// ---- one full read of everything the app needs -----------------------------
+async function loadAll() {
+  const [prodRes, batchRes, saleRes, custRes, expRes, rmRes, pkgRes, recRes] = await Promise.all([
+    sb.from('v_products_with_variants').select('*').order('id'),
+    sb.from('production_batches').select('*').is('voided_at', null),
+    sb.from('sales').select('*, customers(name), product_variants(size)').is('voided_at', null),
+    sb.from('customers').select('name, mobile').eq('active', true),
+    sb.from('expenses').select('*').is('voided_at', null),
+    sb.from('raw_materials').select('*').eq('active', true),
+    sb.from('packaging_items').select('*'),   // includes inactive/historical rows — app filters as needed
+    sb.from('recipe_items').select('*').eq('active', true),
+  ]);
+  for (const r of [prodRes, batchRes, saleRes, custRes, expRes, rmRes, pkgRes, recRes]) {
+    if (r.error) throw r.error;
+  }
+
+  // computed recipe cost per product, via the recursive DB function — this is
+  // what correctly folds a sub-recipe (e.g. "Masala - Puffora") into the
+  // finished product's cost instead of treating it as free.
+  const costEntries = await Promise.all(
+    prodRes.data.map(p => sb.rpc('inv_recipe_cost_per_kg', { p_product_id: p.id, p_depth: 0 })
+      .then(r => [p.id, r.error ? null : r.data]))
+  );
+  const costMap = Object.fromEntries(costEntries);
+
+  const products = prodRes.data.map(p => ({
+    id: p.id, name: p.name, category: p.category, masterBrand: p.master_brand,
+    variantName: p.variant_name, productType: p.product_type,
+    variants: p.variants || [], computedCostPerKg: costMap[p.id],
+  }));
+
+  const custMeta = {};
+  (custRes.data || []).forEach(c => { custMeta[c.name] = { mobile: c.mobile || '' }; });
+
+  return {
+    products,
+    batches: (batchRes.data || []).map(mapBatchRow),
+    sales: (saleRes.data || []).map(mapSaleRow),
+    custMeta,
+    expenses: (expRes.data || []).map(mapExpenseRow),
+    rawMaterials: (rmRes.data || []).map(mapRawMatRow),
+    packaging: (pkgRes.data || []).map(mapPackagingRow),
+    recipes: (recRes.data || []).map(mapRecipeRow),
+  };
+}
+
+// ---- every write the app performs, keyed by the same action names the -----
+// ---- old GAS backend used. Stock-affecting sale edits use an atomic RPC. ---
+async function dbWrite(action, data) {
+  switch (action) {
+    case 'addBatch': {
+      const { error } = await sb.rpc('inv_create_production_batch', {
+        p_id: data.id, p_product_id: +data.productId, p_production_date: data.prodDate || null,
+        p_expiry_date: data.expDate || null, p_quantity_produced_kg: +data.kgProduced,
+        p_unit_cost_per_kg: +data.costPerKg, p_notes: data.notes || null,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'updateBatch': {
+      // fetch the pre-edit row so we can post a ledger ADJUSTMENT for any
+      // change in damaged/returned quantity (the two fields that routinely
+      // get edited in after batch creation).
+      const { data: before } = await sb.from('production_batches').select('*').eq('id', data.id).single();
+      const { error } = await sb.from('production_batches').update({
+        product_id: +data.productId, production_date: data.prodDate || null,
+        expiry_date: data.expDate || null, quantity_produced_kg: +data.kgProduced,
+        unit_cost_per_kg: +data.costPerKg, quantity_returned_kg: +(data.kgReturned || 0),
+        quantity_damaged_kg: +(data.kgDamaged || 0), notes: data.notes || null,
+      }).eq('id', data.id);
+      if (error) throw error;
+      if (before) {
+        const deltaDamaged = +(data.kgDamaged || 0) - +(before.quantity_damaged_kg || 0);
+        const deltaReturned = +(data.kgReturned || 0) - +(before.quantity_returned_kg || 0);
+        const adjustments = [];
+        if (deltaDamaged) adjustments.push({
+          transaction_date: new Date().toISOString().slice(0, 10), item_type: 'finished_good',
+          batch_id: data.id, transaction_type: 'DAMAGE', quantity: -deltaDamaged,
+          reference_type: 'production_batch_edit', reference_id: data.id,
+        });
+        if (deltaReturned) adjustments.push({
+          transaction_date: new Date().toISOString().slice(0, 10), item_type: 'finished_good',
+          batch_id: data.id, transaction_type: 'RETURN', quantity: -deltaReturned,
+          reference_type: 'production_batch_edit', reference_id: data.id,
+        });
+        if (adjustments.length) await sb.from('inventory_transactions').insert(adjustments);
+      }
+      break;
+    }
+    case 'deleteBatch': {
+      const { error } = await sb.from('production_batches')
+        .update({ voided_at: new Date().toISOString(), void_reason: 'Deleted from app' }).eq('id', data);
+      if (error) throw error;
+      break;
+    }
+
+    case 'addSale': {
+      const customerId = await resolveOrCreateCustomer(data.customer);
+      const variantId = await resolveVariantId(+data.productId, data.size);
+      const { error } = await sb.rpc('inv_create_sale', {
+        p_sale_date: data.date || new Date().toISOString().slice(0, 10), p_customer_id: customerId,
+        p_sale_type: data.type || null, p_product_id: +data.productId, p_variant_id: variantId,
+        p_batch_id: data.batchId, p_quantity: +data.qty, p_unit_price: +data.price,
+        p_discount_pct: +(data.disc || 0), p_payment_status: data.paymentStatus || 'Pending',
+        p_partial_qty: +(data.partialQty || 0), p_partial_amount: +(data.partialAmount || 0),
+        p_notes: data.notes || null, p_legacy_invoice_no: data.id || null,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'updateSale': {
+      // Sale edits must go through the atomic Supabase RPC so the sale row and
+      // inventory ledger can never drift apart. The RPC reverses the old SALE
+      // transaction, updates the sale, and posts the replacement SALE entry
+      // in one database transaction.
+      const customerId = data.customer ? await resolveOrCreateCustomer(data.customer) : null;
+      const variantId = data.size
+        ? await resolveVariantId(+data.productId, data.size)
+        : null;
+      const { error } = await sb.rpc('inv_update_sale', {
+        p_sale_id: data.id,
+        p_sale_date: data.date || null,
+        p_customer_id: customerId,
+        p_sale_type: data.type || null,
+        p_product_id: +data.productId,
+        p_variant_id: variantId,
+        p_batch_id: data.batchId || null,
+        p_quantity: +data.qty,
+        p_unit_price: +data.price,
+        p_discount_pct: +(data.disc || 0),
+        p_payment_status: data.paymentStatus || 'Pending',
+        p_partial_qty: +(data.partialQty || 0),
+        p_partial_amount: +(data.partialAmount || 0),
+        p_notes: data.notes || null,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'deleteSale': {
+      const { error } = await sb.rpc('inv_void_sale', { p_sale_id: data, p_reason: 'Deleted from app' });
+      if (error) throw error;
+      break;
+    }
+
+    case 'addProduct': {
+      const { error } = await sb.from('products').insert({
+        id: +data.id, name: data.name, category: data.category || null,
+        master_brand: data.masterBrand || null, variant_name: data.variantName || null,
+      });
+      if (error) throw error;
+      if (data.variants && data.variants.length) {
+        await sb.from('product_variants').insert(data.variants.map(v => ({
+          product_id: +data.id, size: v.size, unit_cost: +(v.unitCost || 0), mrp: +(v.mrp || 0),
+        })));
+      }
+      break;
+    }
+    case 'updateProduct': {
+      const { error } = await sb.from('products').update({
+        name: data.name, category: data.category || null,
+        master_brand: data.masterBrand || null, variant_name: data.variantName || null,
+      }).eq('id', +data.id);
+      if (error) throw error;
+      if (data.variants) {
+        for (const v of data.variants) {
+          await sb.from('product_variants').update({
+            unit_cost: +(v.unitCost || 0), mrp: +(v.mrp || 0), print_mrp: v.printMrp != null ? +v.printMrp : null,
+            retail_sell_price: v.retailSellPrice != null ? +v.retailSellPrice : null,
+            customer_price: v.customerPrice != null ? +v.customerPrice : null,
+          }).eq('product_id', +data.id).eq('size', v.size);
+        }
+      }
+      break;
+    }
+    case 'deleteProduct': {
+      const { error } = await sb.from('products').update({ active: false }).eq('id', +data);
+      if (error) throw error;
+      break;
+    }
+
+    case 'addExpense': {
+      const { error } = await sb.from('expenses').insert({
+        id: data.id, expense_date: data.date, type: data.type, vendor: data.vendor || null,
+        item_name: data.itemName || null, amount: +data.amount, payment_mode: data.paymentMode || null,
+        notes: data.notes || null,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'updateExpense': {
+      const { error } = await sb.from('expenses').update({
+        expense_date: data.date, type: data.type, vendor: data.vendor || null,
+        item_name: data.itemName || null, amount: +data.amount, payment_mode: data.paymentMode || null,
+        notes: data.notes || null,
+      }).eq('id', data.id);
+      if (error) throw error;
+      break;
+    }
+    case 'deleteExpense': {
+      const { error } = await sb.from('expenses')
+        .update({ voided_at: new Date().toISOString(), void_reason: 'Deleted from app' }).eq('id', data);
+      if (error) throw error;
+      break;
+    }
+
+    case 'updateCustMeta': {
+      // `data` is the FULL {name: {mobile}} map (as the old app always sent);
+      // only actually write rows whose mobile differs from what's stored.
+      for (const [name, meta] of Object.entries(data)) {
+        const id = await resolveOrCreateCustomer(name);
+        await sb.from('customers').update({ mobile: meta.mobile || null }).eq('id', id);
+      }
+      break;
+    }
+
+    case 'addRawMaterial': {
+      const { error } = await sb.from('raw_materials').insert({
+        id: data.id, item: data.item, unit: data.unit, cost: +data.cost, notes: data.notes || null,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'updateRawMaterial': {
+      const { error } = await sb.from('raw_materials')
+        .update({ item: data.item, unit: data.unit, cost: +data.cost, notes: data.notes || null })
+        .eq('id', data.id);
+      if (error) throw error;
+      break;
+    }
+    case 'deleteRawMaterial': {
+      const { error } = await sb.from('raw_materials').update({ active: false }).eq('id', data);
+      if (error) throw error;
+      break;
+    }
+
+    case 'addPackaging': {
+      const { error } = await sb.from('packaging_items').insert({
+        id: data.id, pouch_size: data.pouchSize, cost_per_pouch: +data.costPerPouch,
+        cost_per_sticker: +data.costPerSticker, notes: data.notes || null, active: false,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'updatePackaging': {
+      const { error } = await sb.from('packaging_items').update({
+        pouch_size: data.pouchSize, cost_per_pouch: +data.costPerPouch,
+        cost_per_sticker: +data.costPerSticker, notes: data.notes || null,
+      }).eq('id', data.id);
+      if (error) throw error;
+      break;
+    }
+    case 'activatePackaging': {
+      // Only one packaging row per pouch_size may be active (enforced by a DB
+      // unique index too) — deactivate any sibling first, then activate this one.
+      const { data: row } = await sb.from('packaging_items').select('pouch_size').eq('id', data).single();
+      if (row) await sb.from('packaging_items').update({ active: false }).eq('pouch_size', row.pouch_size);
+      const { error } = await sb.from('packaging_items').update({ active: true }).eq('id', data);
+      if (error) throw error;
+      break;
+    }
+    case 'deletePackaging': {
+      // Packaging rows are historical records, never hard-deleted — see the
+      // migration report on the duplicate 200g rows. "Delete" here just
+      // makes sure the row can never be the active one for its size.
+      const { error } = await sb.from('packaging_items').update({ active: false }).eq('id', data);
+      if (error) throw error;
+      break;
+    }
+
+    case 'addRecipeItem': {
+      const { error } = await sb.from('recipe_items').insert({
+        id: data.id, product_id: +data.productId, component_type: 'raw_material',
+        raw_material_id: data.rawMatId || null, item_name: data.itemName,
+        qty_grams: +data.qtyGrams, notes: data.notes || null,
+      });
+      if (error) throw error;
+      break;
+    }
+    case 'updateRecipeItem': {
+      const { error } = await sb.from('recipe_items')
+        .update({ item_name: data.itemName, qty_grams: +data.qtyGrams, notes: data.notes || null })
+        .eq('id', data.id);
+      if (error) throw error;
+      break;
+    }
+    case 'deleteRecipeItem': {
+      const { error } = await sb.from('recipe_items').update({ active: false }).eq('id', data);
+      if (error) throw error;
+      break;
+    }
+
+    default:
+      throw new Error('Unknown action: ' + action);
+  }
+  return await loadAll();
+}
 
 // ── Palette ───────────────────────────────────────────────────
 const PC = { A:'#1D7874', B:'#2563EB', C:'#7C3AED', D:'#EA580C' };
@@ -764,14 +1115,37 @@ function App() {
   const setters = { setProds, setBats, setSals, setCustMeta, setExpenses,
                     setRawMaterials, setPackaging, setRecipes };
 
-  // ── Load data ─────────────────────────────────────────────
+  // ── Auth (Supabase requires a signed-in 'authenticated' user — RLS gives
+  //    the anon key zero access by design) ────────────────────────────────
+  const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authErr, setAuthErr] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
   useEffect(() => {
+    sb.auth.getSession().then(({ data }) => { setSession(data.session); setAuthChecked(true); });
+    const { data: sub } = sb.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  function doSignIn() {
+    setAuthBusy(true); setAuthErr(null);
+    sb.auth.signInWithPassword({ email: authEmail, password: authPassword })
+      .then(({ error }) => { setAuthBusy(false); if (error) setAuthErr(error.message); })
+      .catch(err => { setAuthBusy(false); setAuthErr(err.message || 'Sign-in failed.'); });
+  }
+
+  // ── Load data (only once signed in) ────────────────────────────────────
+  useEffect(() => {
+    if (!session) return;
     const timeout = setTimeout(() => {
       setLoading(false);
-      setLoadErr('Could not reach Google Sheets after 10s. Check your GAS_URL configuration.');
+      setLoadErr('Could not reach Supabase after 10s. Check SUPABASE_URL / SUPABASE_ANON_KEY.');
     }, 10000);
 
-    gasGet()
+    loadAll()
       .then(data => {
         clearTimeout(timeout);
         applyData(data, setters);
@@ -782,13 +1156,23 @@ function App() {
         setLoadErr(err.message || 'Failed to load data.');
         setLoading(false);
       });
-  }, []);
+  }, [session]);
 
   // ── Generic API op ────────────────────────────────────────
   const gasOp = useCallback((fnName, payload, onSuccess) => {
     setSaving(true);
-    const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
-    gasPost(fnName, data !== undefined ? data : null)
+    // NOTE (bug fix — see migration report): the old code did
+    // `JSON.parse(payload)` unconditionally whenever payload was a string,
+    // which threw on every plain-string id (batch ids, 'EXP-...', 'RM-...',
+    // 'PKG-...') because those aren't valid JSON — deleting a batch,
+    // expense, raw material, packaging item, or recipe item would crash
+    // before ever reaching the network call. Falling back to the raw
+    // string when it isn't valid JSON fixes that.
+    let data = payload;
+    if (typeof payload === 'string') {
+      try { data = JSON.parse(payload); } catch (e) { data = payload; }
+    }
+    dbWrite(fnName, data !== undefined ? data : null)
       .then(result => {
         applyData(result, setters);
         setSaving(false);
@@ -852,7 +1236,15 @@ function App() {
   [bats]);
 
   const salsLatestFirst = useMemo(() =>
-    [...sals].sort((a,b) => String(b.id).localeCompare(String(a.id), undefined, {numeric:true})),
+    // FIX: sale `id` is now a real UUID (not the old numeric invoice id), so
+    // it can no longer be used as a chronological sort proxy. Sort by date,
+    // then by invoiceNo as a same-day tiebreaker (closest equivalent to the
+    // old behavior).
+    [...sals].sort((a,b) => {
+      const d = String(b.date||'').localeCompare(String(a.date||''));
+      if (d !== 0) return d;
+      return String(b.invoiceNo||'').localeCompare(String(a.invoiceNo||''), undefined, {numeric:true});
+    }),
   [sals]);
 
   const expensesLatestFirst = useMemo(() =>
@@ -874,7 +1266,7 @@ function App() {
     if (saleFilter.trim()) {
       const f = saleFilter.trim().toLowerCase();
       list = list.filter(s =>
-        (s.id||'').toLowerCase().includes(f) ||
+        (s.invoiceNo||'').toLowerCase().includes(f) ||
         (s.customer||'').toLowerCase().includes(f) ||
         (s.type||'').toLowerCase().includes(f) ||
         (prodMap[s.productId]?.name||'').toLowerCase().includes(f) ||
@@ -1100,12 +1492,51 @@ function App() {
   function delRecipeItem(id)  { if (!confirm('Delete recipe item?')) return; gasOp('deleteRecipeItem', id); }
 
   // ── Config warning ────────────────────────────────────────
-  const gasNotConfigured = GAS_URL === 'YOUR_GAS_DEPLOYMENT_URL_HERE';
+  const supabaseNotConfigured = SUPABASE_URL === 'YOUR_SUPABASE_PROJECT_URL_HERE'
+    || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY_HERE';
+
+  if (supabaseNotConfigured) return (
+    <div className="loader-wrap">
+      <div className="error-box">
+        <h3>Supabase not configured</h3>
+        <p>Open index.html and set SUPABASE_URL / SUPABASE_ANON_KEY near the top of the script (see the setup instructions doc).</p>
+      </div>
+    </div>
+  );
+
+  if (!authChecked) return (
+    <div className="loader-wrap"><div className="spinner"></div></div>
+  );
+
+  if (!session) return (
+    <div className="loader-wrap">
+      <div className="error-box" style={{background:'#fff',border:'1px solid #e5e7eb',textAlign:'left'}}>
+        <h3 style={{color:'#1A2B4A',marginBottom:12}}>📦 Inventory Management — Sign in</h3>
+        <div style={{marginBottom:10}}>
+          <label className="field-label">Email</label>
+          <input className="form-input" type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}
+            onKeyDown={e=>{ if (e.key==='Enter') doSignIn(); }} />
+        </div>
+        <div style={{marginBottom:10}}>
+          <label className="field-label">Password</label>
+          <input className="form-input" type="password" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}
+            onKeyDown={e=>{ if (e.key==='Enter') doSignIn(); }} />
+        </div>
+        {authErr && <div style={{color:'#b91c1c',fontSize:12,marginBottom:8}}>{authErr}</div>}
+        <button className="btn-save" style={{width:'100%'}} onClick={doSignIn} disabled={authBusy}>
+          {authBusy ? 'Signing in…' : 'Sign in'}
+        </button>
+        <p style={{fontSize:11,color:'#6b7280',marginTop:10}}>
+          Admin account is created in the Supabase dashboard (Authentication → Users) — see the setup instructions.
+        </p>
+      </div>
+    </div>
+  );
 
   if (loading) return (
     <div className="loader-wrap">
       <div className="spinner"></div>
-      <div className="loader-text">Loading from Google Sheets…</div>
+      <div className="loader-text">Loading from Supabase…</div>
     </div>
   );
 
@@ -1118,21 +1549,19 @@ function App() {
           <div className="app-header-sub">{prods.length} products · {bats.length} batches · {sals.length} invoices</div>
         </div>
         {saving && <div className="saving-badge"><div className="saving-spinner"></div>Saving…</div>}
+        <button onClick={() => sb.auth.signOut()}
+          style={{background:'none',border:'1px solid rgba(255,255,255,.3)',color:'#fff',fontSize:11,
+            padding:'5px 10px',borderRadius:6,cursor:'pointer'}}>Sign out</button>
       </div>
 
-      {/* Config / error banner */}
-      {(gasNotConfigured || loadErr) && (
+      {/* Error banner */}
+      {loadErr && (
         <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,
           padding:'10px 16px',margin:'8px 16px',fontSize:12,color:'#991b1b',
           display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span>
-            {gasNotConfigured
-              ? '⚠️ GAS_URL not configured. Open index.html and set your Google Apps Script deployment URL at the top of the script.'
-              : '⚠️ ' + loadErr}
-          </span>
-          {loadErr && !gasNotConfigured &&
-            <button onClick={() => setLoadErr(null)}
-              style={{background:'none',border:'none',cursor:'pointer',color:'#991b1b',fontSize:16}}>✕</button>}
+          <span>⚠️ {loadErr}</span>
+          <button onClick={() => setLoadErr(null)}
+            style={{background:'none',border:'none',cursor:'pointer',color:'#991b1b',fontSize:16}}>✕</button>
         </div>
       )}
 
@@ -1190,7 +1619,7 @@ function App() {
                   <tbody>
                     {salsLatestFirst.slice(0,8).map(s => (
                       <tr key={s.id}>
-                        <td className="td-mono">{s.id}</td>
+                        <td className="td-mono">{s.invoiceNo || s.id}</td>
                         <td className="td-muted">{s.date}</td>
                         <td>{s.customer}</td>
                         <td><span className="dot" style={{background:PC[s.productId]||'#94a3b8'}}/>{prodDisplay(prodMap[s.productId])}</td>
@@ -1392,7 +1821,7 @@ function App() {
                       return (
                         <React.Fragment key={s.id}>
                           <tr>
-                            <td className="td-mono">{s.id}</td>
+                            <td className="td-mono">{s.invoiceNo || s.id}</td>
                             <td className="td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="date" display={s.date||'—'} val={s.date||''} type="date" /></td>
                             <td><EC {...ecProps} entity="sale" rowKey={s.id} field="customer" display={s.customer} val={s.customer} /></td>
                             <td className="td-muted"><EC {...ecProps} entity="sale" rowKey={s.id} field="type" display={s.type||'—'} val={s.type||''} options={['Retailer','Wholesale','Direct/Online','Distributor']} /></td>
@@ -1795,7 +2224,16 @@ function App() {
           const rmMap = {}; rawMaterials.forEach(r => { rmMap[r.id] = r; });
           const unitToGrams = u => u==='1kg'||u==='1ltr' ? 1000 : u==='500g' ? 500 : u==='250g' ? 250 : u==='100g' ? 100 : 1;
           const recipeForProd = prodId => recipes.filter(r => r.productId === prodId);
+          // FIX (see migration report / decision 1): "Masala - Puffora" is a sub-recipe —
+          // a recipe_item can point at ANOTHER product instead of a raw material. The old
+          // client-side sum only ever looked at item.rawMatId, so a sub-recipe ingredient
+          // silently contributed ₹0. computedCostPerKg comes from the DB's recursive
+          // inv_recipe_cost_per_kg() function, which resolves sub-recipes correctly —
+          // prefer it, and only fall back to the raw-material-only sum if it's unavailable
+          // (e.g. still offline / not yet loaded).
           const recipeCost1kg = prodId => {
+            const p = prods.find(x => x.id === prodId);
+            if (p && p.computedCostPerKg != null) return p.computedCostPerKg;
             const items = recipeForProd(prodId);
             return items.reduce((sum, item) => {
               if (item.rawMatId && rmMap[item.rawMatId]) {
@@ -1919,10 +2357,10 @@ function App() {
                     )}
                     <div className="table-wrap">
                       <table>
-                        <thead><tr><th>#</th><th>Pouch Size</th><th className="th-r">Cost/Pouch (₹)</th><th className="th-r">Cost/Sticker (₹)</th><th className="th-r">Total per Pack (₹)</th><th>Notes</th><th></th></tr></thead>
+                        <thead><tr><th>#</th><th>Pouch Size</th><th className="th-r">Cost/Pouch (₹)</th><th className="th-r">Cost/Sticker (₹)</th><th className="th-r">Total per Pack (₹)</th><th>Status</th><th>Notes</th><th></th></tr></thead>
                         <tbody>
                           {packaging.length === 0 ? (
-                            <tr><td colSpan={7} style={{textAlign:'center',color:'#9ca3af',padding:20}}>No packaging items yet. Click "+ Add Item" to start.</td></tr>
+                            <tr><td colSpan={8} style={{textAlign:'center',color:'#9ca3af',padding:20}}>No packaging items yet. Click "+ Add Item" to start.</td></tr>
                           ) : packaging.map((p, i) => {
                             const tc = +(p.costPerPouch||0) + +(p.costPerSticker||0);
                             return (
@@ -1932,6 +2370,12 @@ function App() {
                                 <td className="td-r"><EC entity="packaging" rowKey={p.id} field="costPerPouch" display={`₹${(p.costPerPouch||0).toFixed(2)}`} val={p.costPerPouch||0} type="number" {...ecProps} /></td>
                                 <td className="td-r"><EC entity="packaging" rowKey={p.id} field="costPerSticker" display={`₹${(p.costPerSticker||0).toFixed(2)}`} val={p.costPerSticker||0} type="number" {...ecProps} /></td>
                                 <td className="td-r td-bold" style={{color:'#1e40af'}}>₹{tc.toFixed(2)}</td>
+                                <td>
+                                  {p.active
+                                    ? <span className="badge badge-in">Active</span>
+                                    : <button className="btn-add" style={{padding:'4px 8px',fontSize:10,minHeight:26}}
+                                        onClick={() => gasOp('activatePackaging', p.id)} disabled={saving}>Set Active</button>}
+                                </td>
                                 <td className="td-muted" style={{fontSize:10,maxWidth:180}}><EC entity="packaging" rowKey={p.id} field="notes" display={p.notes||<span style={{color:'#d1d5db',fontSize:10}}>add note</span>} val={p.notes||''} type="text" {...ecProps} /></td>
                                 <td><button className="btn-del" onClick={() => delPackaging(p.id)}>🗑</button></td>
                               </tr>
@@ -1996,14 +2440,27 @@ function App() {
                                 {items.length === 0 ? (
                                   <tr><td colSpan={7} style={{textAlign:'center',color:'#9ca3af',padding:16,fontSize:12}}>No recipe items yet.</td></tr>
                                 ) : items.map((item, i) => {
+                                  const isSubRecipe = item.componentType === 'product' && item.componentProductId != null;
+                                  const subRecipeProduct = isSubRecipe ? prods.find(p => p.id === item.componentProductId) : null;
                                   const rm = rmMap[item.rawMatId];
-                                  const ug = rm ? unitToGrams(rm.unit) : 1;
-                                  const costPer1g = rm && ug > 0 ? rm.cost / ug : 0;
+                                  let costPer1g;
+                                  if (isSubRecipe) {
+                                    // sub-recipe ingredient (e.g. "Masala - Puffora") — cost comes from
+                                    // that OTHER product's own computed recipe cost, not a raw material.
+                                    costPer1g = subRecipeProduct && subRecipeProduct.computedCostPerKg != null
+                                      ? subRecipeProduct.computedCostPerKg / 1000 : 0;
+                                  } else {
+                                    const ug = rm ? unitToGrams(rm.unit) : 1;
+                                    costPer1g = rm && ug > 0 ? rm.cost / ug : 0;
+                                  }
                                   const itemCost = costPer1g * item.qtyGrams;
                                   return (
                                     <tr key={item.id}>
                                       <td className="td-muted td-mono">{i+1}</td>
-                                      <td className="td-bold"><EC entity="recipe" rowKey={item.id} field="itemName" display={item.itemName} val={item.itemName} type="text" {...ecProps} /></td>
+                                      <td className="td-bold">
+                                        <EC entity="recipe" rowKey={item.id} field="itemName" display={item.itemName} val={item.itemName} type="text" {...ecProps} />
+                                        {isSubRecipe && <span className="badge badge-partial" style={{marginLeft:6,fontSize:9}}>sub-recipe</span>}
+                                      </td>
                                       <td className="td-r"><EC entity="recipe" rowKey={item.id} field="qtyGrams" display={item.qtyGrams} val={item.qtyGrams} type="number" {...ecProps} /></td>
                                       <td className="td-r td-muted">₹{costPer1g.toFixed(4)}</td>
                                       <td className="td-r">₹{itemCost.toFixed(4)}</td>
@@ -2065,8 +2522,14 @@ function App() {
                             return variants.map((v, vi) => {
                               const sizeGrams = sizeMap[v.size] || parseFloat(v.size) || 0;
                               const rawCostForSize = rawCost1kg * (sizeGrams / 1000);
-                              const pkgsForSize = packaging.filter(p => p.pouchSize === v.size || p.pouchSize.toLowerCase() === v.size.toLowerCase());
-                              const pkgCostPerPouch = pkgsForSize.reduce((sum, p) => sum + (+(p.costPerPouch||0)) + (+(p.costPerSticker||0)), 0);
+                              // FIX (see migration report): only the ACTIVE packaging row for a size
+                              // counts toward cost — summing every historical/duplicate row for that
+                              // size (the old behavior) silently inflated landing cost.
+                              const activePkgForSize = packaging.find(p => p.active &&
+                                (p.pouchSize === v.size || p.pouchSize.toLowerCase() === v.size.toLowerCase()));
+                              const pkgCostPerPouch = activePkgForSize
+                                ? (+(activePkgForSize.costPerPouch||0)) + (+(activePkgForSize.costPerSticker||0))
+                                : 0;
                               const landingCost = rawCostForSize + pkgCostPerPouch;
                               const printMrp = v.printMrp || v.mrp || 0;
                               const retailSellPrice = v.retailSellPrice || 0;
@@ -2084,7 +2547,10 @@ function App() {
                                   <td style={{fontWeight:600}}>{v.size}</td>
                                   <td className="td-r td-muted">₹{rawCostForSize.toFixed(2)}</td>
                                   <td className="td-r td-muted">₹{pkgCostPerPouch.toFixed(2)}</td>
-                                  <td className="td-r td-bold" style={{color:'#1e40af',fontSize:13}}>₹{landingCost.toFixed(2)}</td>
+                                  <td className="td-r td-bold" style={{color:'#1e40af',fontSize:13}}>
+                                    ₹{landingCost.toFixed(2)}
+                                    {!activePkgForSize && <div style={{fontSize:9,color:'#b45309',fontWeight:400}}>no active packaging set for {v.size}</div>}
+                                  </td>
                                   <td className="td-r"><EC entity="product" rowKey={varKey} field="printMrp" display={printMrp > 0 ? `₹${printMrp.toFixed(2)}` : <span style={{color:'#9ca3af',fontSize:10}}>tap to set</span>} val={printMrp} type="number" {...ecProps} /></td>
                                   <td className="td-r" style={{background:'#fffbeb'}}><EC entity="product" rowKey={varKey} field="retailSellPrice" display={retailSellPrice > 0 ? `₹${retailSellPrice.toFixed(2)}` : <span style={{color:'#9ca3af',fontSize:10}}>tap to set</span>} val={retailSellPrice} type="number" {...ecProps} /></td>
                                   <td className="td-r" style={{background:'#fffbeb',color:retailerMarginPct!=='—'?'#92400e':'#9ca3af',fontWeight:600}}>{retailerMarginPct !== '—' ? retailerMarginPct + '%' : '—'}</td>
