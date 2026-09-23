@@ -1463,7 +1463,7 @@ function App() {
   }
 
   const ecProps = {editCell, editVal, setEditVal, startEdit, commitEdit, cancelEdit, saving};
-  const bfp = ns.productId ? batsLatestFirst.filter(b => b.productId === ns.productId) : batsLatestFirst;
+  const bfp = ns.productId ? batsLatestFirst.filter(b => String(b.productId) === String(ns.productId)) : batsLatestFirst;
   const vfp = ns.productId ? (prodMap[ns.productId]?.variants || []) : [];
 
   function doAddRawMaterial() {
